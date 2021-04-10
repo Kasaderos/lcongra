@@ -1,6 +1,7 @@
 package service
 
 import (
+	"context"
 	"log"
 	"net/http"
 	"strings"
@@ -16,8 +17,13 @@ func NewReporter(url string, logger *log.Logger, chanMsgs <-chan string) *Report
 	return &Reporter{url, logger, chanMsgs}
 }
 
-func (r *Reporter) Report() {
+func (r *Reporter) Report(ctx context.Context) {
 	for msg := range r.chanMsgs {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+		}
 		buf := strings.NewReader(msg)
 		resp, err := http.Post(r.url, "application/json", buf)
 		if err != nil {
