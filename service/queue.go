@@ -18,7 +18,7 @@ func NewOrderQueue() *OrderQueue {
 	}
 }
 
-func (q *OrderQueue) Push(a *exchange.Order) {
+func (q *OrderQueue) Push(a exchange.Order) {
 	q.mu.Lock()
 	defer q.mu.Lock()
 	q.lst.PushBack(a)
@@ -30,10 +30,10 @@ func (q *OrderQueue) Pop() {
 	q.lst.Remove(q.lst.Front())
 }
 
-func (q *OrderQueue) Front() *exchange.Order {
+func (q *OrderQueue) Front() exchange.Order {
 	q.mu.Lock()
 	defer q.mu.Lock()
-	order, _ := q.lst.Front().Value.(*exchange.Order)
+	order, _ := q.lst.Front().Value.(exchange.Order)
 	return order
 }
 

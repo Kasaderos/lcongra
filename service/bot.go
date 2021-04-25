@@ -15,6 +15,7 @@ const (
 	PopOrder
 	CreateOrder
 	CheckOrder
+	WaitOrder
 )
 
 type Bot struct {
@@ -34,7 +35,7 @@ func NewBot(queue *OrderQueue, ex exchange.Exchanger, logger *log.Logger) *Bot {
 
 func (b *Bot) StartSM(ctx context.Context) {
 	b.state = Start
-	var currentOrder *exchange.Order
+	var currentOrder exchange.Order
 SM:
 	for {
 		select {
@@ -42,6 +43,7 @@ SM:
 			break SM
 		default:
 		}
+
 		switch b.state {
 		case Start:
 			b.state = PopOrder
@@ -52,14 +54,32 @@ SM:
 			}
 			now := time.Now()
 			currentOrder = b.queue.Front()
-			if currentOrder.OrderTime.Before(now) {
+			// if open position expired we decline creating order
+			if currentOrder.Side == "BUY" && now.After(currentOrder.OrderTime) {
+				b.queue.Pop()
+				continue
+			}
+
+			// if sell expired then we sell by current price
+			if currentOrder.Side == "SELL" && now.After(currentOrder.OrderTime) {
+				currentPrice, err := b.exchange.GetRate(currentOrder.Pair)
+				if err != nil {
+					b.logger.Println("close expired position failed", err)
+					b.queue.Pop()
+					continue
+				}
+				currentOrder.Price = currentPrice
+			}
+
+			if !currentOrder.OrderTime.IsZero() && currentOrder.OrderTime.Before(now) {
 				time.Sleep(now.Sub(currentOrder.OrderTime))
 			}
+
 			b.queue.Pop()
 			b.state = CreateOrder
 
 		case CreateOrder:
-			id, err := b.exchange.CreateOrder(currentOrder)
+			id, err := b.exchange.CreateOrder(&currentOrder)
 			currentOrder.ID = id
 			if err != nil {
 				b.logger.Println(err)
@@ -78,6 +98,16 @@ SM:
 					b.state = PopOrder
 					continue SM
 				}
+			}
+			b.state = WaitOrder
+		case WaitOrder:
+			orders, err := b.exchange.OpenedOrders(currentOrder.Pair)
+			if err != nil {
+				b.logger.Println(err)
+				continue
+			}
+			if len(orders) == 0 {
+				b.state = PopOrder
 			}
 		}
 	}
