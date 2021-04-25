@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log"
 	"net/http"
@@ -22,8 +23,10 @@ func main() {
 		log.Fatal(err)
 	}
 
+	getKeys(conf)
+
 	logger := log.New(logFile, "[binance] ", log.Flags())
-	binance := binance.NewExchange(logger)
+	binance := binance.NewExchange(logger, conf.ApiKey, conf.ApiSecret)
 
 	chanMsg := make(chan string)
 	observer := service.NewObserver(binance, logger, chanMsg, []string{conf.Pair})
@@ -56,6 +59,25 @@ func main() {
 	case <-sig:
 		quit()
 	}
+}
+
+func getKeys(conf *config.Configuration) {
+	url := fmt.Sprintf("%s/getkeys", conf.ClientURL)
+	resp, err := http.DefaultClient.Get(url)
+	if err != nil {
+		log.Fatal(err)
+	}
+	data, err := io.ReadAll(resp.Body)
+	if err != nil {
+		log.Fatal(err)
+	}
+	var apikeys config.ApiKeys
+	err = json.Unmarshal(data, &apikeys)
+	if err != nil {
+		log.Fatal(err)
+	}
+	conf.ApiKey = apikeys.ApiKey
+	conf.ApiSecret = apikeys.ApiSecret
 }
 
 type HttpHandler struct {

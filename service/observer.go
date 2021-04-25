@@ -21,12 +21,14 @@ func NewObserver(exchange exchange.Exchanger, logger *log.Logger, chanMsg chan<-
 }
 
 func (b *Observer) Observe(ctx context.Context) {
+	b.logger.Println("started")
 	for {
 		select {
 		case <-ctx.Done():
 		default:
 		}
 		for _, pair := range b.pairs {
+			pair := b.exchange.PairFormat(pair)
 			rate, err := b.exchange.GetRate(pair)
 			if err != nil {
 				b.logger.Println(pair, err)

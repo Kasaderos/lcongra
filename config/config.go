@@ -11,6 +11,13 @@ type Configuration struct {
 	LogFile   string
 	QueueSize int
 	Pair      string
+	ApiKey    string
+	ApiSecret string
+}
+
+type ApiKeys struct {
+	ApiKey    string `json:"apikey"`
+	ApiSecret string `json:"apisecret"`
 }
 
 func ReadConfig(confname string) *Configuration {
