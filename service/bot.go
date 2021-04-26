@@ -76,6 +76,7 @@ SM:
 			}
 
 			b.queue.Pop()
+			b.logger.Printf("got order %+v\n", currentOrder)
 			b.state = CreateOrder
 
 		case CreateOrder:
@@ -85,6 +86,7 @@ SM:
 				b.logger.Println(err)
 				continue
 			}
+			b.logger.Printf("order created %+v\n", currentOrder)
 			b.state = CheckOrder
 
 		case CheckOrder:
@@ -109,6 +111,8 @@ SM:
 			}
 			if len(orders) == 0 {
 				b.state = PopOrder
+				b.logger.Printf("order finished %+v\n", currentOrder)
+				continue
 			}
 			time.Sleep(time.Second)
 		}

@@ -22,7 +22,7 @@ type ApiKeys struct {
 
 func ReadConfig(confname string) *Configuration {
 	viper.SetConfigName("template")
-	viper.AddConfigPath("../../config/")
+	viper.AddConfigPath(".")
 	config := new(Configuration)
 
 	if err := viper.ReadInConfig(); err != nil {
@@ -33,6 +33,8 @@ func ReadConfig(confname string) *Configuration {
 	config.LogFile = viper.GetString("log-file")
 	config.QueueSize = viper.GetInt("order-queue-size")
 	config.Pair = viper.GetString("pair")
+	config.ApiKey = ""
+	config.ApiSecret = ""
 
 	return config
 }

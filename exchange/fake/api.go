@@ -39,7 +39,7 @@ type Account struct {
 	orders         []exchange.Order
 }
 
-func NewService(logger *log.Logger) exchange.Exchanger {
+func NewExchange(logger *log.Logger) exchange.Exchanger {
 	return &fakeExchange{
 		Name: "fake_exchange",
 		account: &Account{
