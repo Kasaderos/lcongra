@@ -100,6 +100,7 @@ SM:
 				}
 			}
 			b.state = WaitOrder
+
 		case WaitOrder:
 			orders, err := b.exchange.OpenedOrders(currentOrder.Pair)
 			if err != nil {
@@ -109,6 +110,7 @@ SM:
 			if len(orders) == 0 {
 				b.state = PopOrder
 			}
+			time.Sleep(time.Second)
 		}
 	}
 }
