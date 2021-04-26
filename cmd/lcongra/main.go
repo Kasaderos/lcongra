@@ -15,7 +15,7 @@ import (
 func main() {
 	// conf := config.ReadConfig("template")
 	_ = config.ReadConfig("template")
-	logFile, err := os.OpenFile("../../service.log", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0666)
+	logFile, err := os.OpenFile("service.log", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
