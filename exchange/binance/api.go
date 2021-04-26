@@ -28,8 +28,6 @@ var (
 	ApiCancelOrder  = fmt.Sprintf("%s/api/v3/order", Endpoint)
 	ApiKlines       = fmt.Sprintf("%s/api/v3/klines", Endpoint)
 	ApiExchangeInfo = fmt.Sprintf("%s/api/v3/exchangeInfo", Endpoint)
-	// ApiKey          = "qaUSAwoWMarS1LQyijzC3NoeIrtA37umA2610tU9zrU6d4HheOFuYMmzWTwZJziW"
-	// ApiSecret       = "xQoGs4MqJgnhPH3AexdJZTuix0WIpIaQJriQncfhTg1agD2brnU4lRIuHLCRe4Aa"
 )
 
 type binance struct {
