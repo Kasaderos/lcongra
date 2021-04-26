@@ -2,41 +2,39 @@ package main
 
 import (
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
 	"log"
-	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/kasaderos/lcongra/config"
-	"github.com/kasaderos/lcongra/exchange/binance"
+	exchange "github.com/kasaderos/lcongra/exchange/fake"
 	"github.com/kasaderos/lcongra/service"
 )
 
 func main() {
-	conf := config.ReadConfig("template")
+	// conf := config.ReadConfig("template")
+	_ = config.ReadConfig("template")
 	logFile, err := os.OpenFile("../../service.log", os.O_CREATE|os.O_RDWR|os.O_TRUNC, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
 
-	getKeys(conf)
-
+	// logger := log.New(logFile, "[binance] ", log.Flags())
+	// binance := binance.NewExchange(logger, conf.ApiKey, conf.ApiSecret)
 	logger := log.New(logFile, "[binance] ", log.Flags())
-	binance := binance.NewExchange(logger, conf.ApiKey, conf.ApiSecret)
+	binance := exchange.NewExchange(logger)
 
-	chanMsg := make(chan string)
-	observer := service.NewObserver(binance, logger, chanMsg, []string{conf.Pair})
+	// chanMsg := make(chan string)
 
 	logger = log.New(logFile, "[reporter] ", log.Flags())
-	reporter := service.NewReporter(conf.ClientURL, logger, chanMsg)
+	// reporter := service.NewReporter(conf.ClientURL, logger, chanMsg)
 
 	ctx, quit := context.WithCancel(context.Background())
-	go observer.Observe(ctx)
-	go reporter.Report(ctx)
+
+	// observer := service.NewObserver(binance, logger, chanMsg, []string{conf.Pair})
+	// go observer.Observe(ctx)
+	// go reporter.Report(ctx)
 
 	logger = log.New(logFile, "[bot] ", log.Flags())
 	queue := service.NewOrderQueue()
@@ -45,9 +43,14 @@ func main() {
 
 	userChan := make(chan string)
 	logger = log.New(logFile, "[handler] ", log.Flags())
-	handler := NewHttpHandler(queue, userChan, logger)
-	go http.ListenAndServe(":8080", handler)
 
+	go service.Autotrade(
+		ctx,
+		"BTC-USDT",
+		"3m",
+		queue,
+		binance,
+	)
 	log.Println("service started 8080")
 	sig := make(chan os.Signal, 1)
 	signal.Notify(sig, syscall.SIGINT)
@@ -58,62 +61,5 @@ func main() {
 		}
 	case <-sig:
 		quit()
-	}
-}
-
-func getKeys(conf *config.Configuration) {
-	url := fmt.Sprintf("%s/getkeys", conf.ClientURL)
-	resp, err := http.DefaultClient.Get(url)
-	if err != nil {
-		log.Fatal(err)
-	}
-	data, err := io.ReadAll(resp.Body)
-	if err != nil {
-		log.Fatal(err)
-	}
-	var apikeys config.ApiKeys
-	err = json.Unmarshal(data, &apikeys)
-	if err != nil {
-		log.Fatal(err)
-	}
-	conf.ApiKey = apikeys.ApiKey
-	conf.ApiSecret = apikeys.ApiSecret
-}
-
-type HttpHandler struct {
-	queue    *service.OrderQueue
-	userChan chan string
-	logger   *log.Logger
-}
-
-func NewHttpHandler(queue *service.OrderQueue, userChan chan string, logger *log.Logger) http.Handler {
-	return &HttpHandler{
-		queue:    queue,
-		userChan: userChan,
-		logger:   logger,
-	}
-}
-
-type Message struct {
-	Type string
-}
-
-func (h *HttpHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
-	switch r.Method {
-	case "GET":
-	case "POST":
-		data, err := io.ReadAll(r.Body)
-		if err != nil {
-			h.logger.Println(err)
-			return
-		}
-		var msg Message
-		err = json.Unmarshal(data, &msg)
-		if err != nil {
-			h.logger.Println(err)
-			return
-		}
-		// h.userChan <- string(msg)
-		w.WriteHeader(http.StatusAccepted)
 	}
 }
