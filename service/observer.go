@@ -25,6 +25,7 @@ func (b *Observer) Observe(ctx context.Context) {
 	for {
 		select {
 		case <-ctx.Done():
+			b.logger.Println("stopped")
 		default:
 		}
 		for _, pair := range b.pairs {
@@ -34,9 +35,10 @@ func (b *Observer) Observe(ctx context.Context) {
 				b.logger.Println(pair, err)
 				continue
 			}
-			msg := fmt.Sprintf("%s=%f\n", pair, rate)
+			msg := fmt.Sprintf("%s=%f", pair, rate)
+			b.logger.Println(msg)
 			b.chanMsg <- msg
 		}
-		time.Sleep(time.Second)
+		time.Sleep(10 * time.Second)
 	}
 }

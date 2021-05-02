@@ -8,6 +8,7 @@ import (
 
 type Configuration struct {
 	ClientURL string
+	Interval  string
 	LogFile   string
 	QueueSize int
 	Pair      string
@@ -33,6 +34,7 @@ func ReadConfig(confname string) *Configuration {
 	config.LogFile = viper.GetString("log-file")
 	config.QueueSize = viper.GetInt("order-queue-size")
 	config.Pair = viper.GetString("pair")
+	config.Interval = viper.GetString("interval")
 	config.ApiKey = ""
 	config.ApiSecret = ""
 

@@ -6,10 +6,10 @@ args = commandArgs(trailingOnly=TRUE)
 #apikey <- 'PwR4lONtheOWGpQK0dBdH4yPx6AsGSl57xS8j396KeZAxcKEaaYbjaVh8s1F7B4b'
 endpoint <- "https://api.binance.com"
 url <- "/api/v3/klines"
-interval <- "3m"
+interval <- args[1]
 #startTime <- trunc(unclass(Sys.time() - 150 * 24 * 3600)) * 1000
 #endTime <- trunc(unclass(Sys.time())) * 1000
-symbol <- "BTCUSDT"
+symbol <- args[2]
 limit <- 1000
 URL <- paste0(endpoint, url, 
               '?symbol=', symbol, 
@@ -42,7 +42,7 @@ for (i in 2:(N-p+1)) {
 norms <- c()
 for (i in 1:(dim(X)[2]-1)) {
     if (i != N-p+1) {
-        norms <- c(norms, norm(as.matrix(X[,i]-X[,N-p+1]), "F"))
+        norms <- c(norms, norm(as.matrix(X[,i]-X[,N-p+1]), "I"))
     }
 }
 nearest <-min(norms) 
@@ -86,10 +86,10 @@ max_price <- max(ts[(length(ts)-p):length(ts)])
 min_price <- min(ts[(length(ts)-p):length(ts)])
 
 price <- ts[length(ts)-p]
-eps <- price * 0.003
-if (price < max_price - eps && price - eps < min_price) {
+eps <- price * 0.0027
+if (price < max_price - eps){ # && price - eps < min_price) {
     cat("1")
-} else if (abs(price-min_price) > abs(price-max_price)) {
+} else if (max_price + eps/2 < min_price ) {
     cat("-1")
 } else {
     cat("0")

@@ -58,13 +58,18 @@ func NewExchange(logger *log.Logger) exchange.Exchanger {
 	}
 }
 
-func Update(ex exchange.Exchanger, errs chan<- error) {
+func Update(ctx context.Context, ex exchange.Exchanger) {
 	exchange, ok := ex.(*fakeExchange)
 	if !ok {
-		errs <- fmt.Errorf("exchanging: error interface conversation")
+		log.Println("exchanging: error interface conversation\n")
+		ctx.Done()
 		return
 	}
 	for {
+		select {
+		case <-ctx.Done():
+		default:
+		}
 		exchange.updatePrice()
 		exchange.updateActiveOrders()
 		time.Sleep(1000 * time.Millisecond)
@@ -75,6 +80,7 @@ func (ex *fakeExchange) updatePrice() {
 	rate, err := ex.realExchange.GetRate(ex.pair)
 	if err != nil {
 		ex.logger.Println(err)
+		return
 	}
 	// websocket prices of pair
 	ex.mu.Lock()
@@ -88,13 +94,12 @@ func (ex *fakeExchange) updateActiveOrders() {
 	currentPrice := ex.price
 	ex.mu.RUnlock()
 	ex.account.mu.Lock()
-	orders := ex.account.orders
 	defer ex.account.mu.Unlock()
-	if len(orders) == 0 {
-		// fmt.Printf("[]\n")
-		return
-	}
+	orders := ex.account.orders
+
 	// fmt.Printf("[\n")
+	newOrders := make([]exchange.Order, len(orders))
+	copy(newOrders, orders)
 	for i, r := range orders {
 		if r.Side == "BUY" && r.Price > currentPrice {
 			logger.Println(r.ID, "completed")
@@ -103,24 +108,22 @@ func (ex *fakeExchange) updateActiveOrders() {
 			ex.account.baseFree += r.Amount - r.Amount*ex.makerCommission
 			logger.Println("baseFree", ex.account.baseFree, "quotedFree", ex.account.quotedFree)
 			// completed
-			orders[i], orders[len(orders)-1] = orders[len(orders)-1], orders[i]
-			orders = orders[:len(orders)-1]
-			ex.account.orders = orders
+			newOrders[i], newOrders[len(newOrders)-1] = newOrders[len(newOrders)-1], newOrders[i]
+			newOrders = newOrders[:len(newOrders)-1]
 		} else if r.Side == "SELL" && r.Price < currentPrice {
 			logger.Println(r.ID, "completed")
 			ex.account.baseFree -= r.Amount
 			roundZero(&ex.account.baseFree)
 			sum := r.Price * r.Amount
-			fmt.Println("sum", sum, "-cm", sum*ex.makerCommission)
 			ex.account.quotedFree += sum - (sum * ex.makerCommission)
 			logger.Println("baseFree", ex.account.baseFree, "quotedFree", ex.account.quotedFree)
 			// completed
-			orders[i], orders[len(orders)-1] = orders[len(orders)-1], orders[i]
-			orders = orders[:len(orders)-1]
-			ex.account.orders = orders
+			newOrders[i], newOrders[len(newOrders)-1] = newOrders[len(newOrders)-1], newOrders[i]
+			newOrders = newOrders[:len(newOrders)-1]
 		}
-		fmt.Printf("%d orderID %s\n", i, r.ID)
+		// fmt.Printf("%d orderID %s\n", i, r.ID)
 	}
+	ex.account.orders = newOrders
 	// fmt.Printf("]\n")
 }
 
@@ -147,18 +150,22 @@ func (ex *fakeExchange) GetRate(pair string) (rate float64, err error) {
 }
 
 func (ex *fakeExchange) CreateOrder(order *exchange.Order) (string, error) {
-	ex.mu.RLock()
 	sum := order.Price * order.Amount
-	ex.mu.RUnlock()
+	ex.account.mu.Lock()
+	defer ex.account.mu.Unlock()
+	if order.Side == "BUY" && ex.account.quotedFree < sum {
+		return "", errors.New(fmt.Sprintf("not enough money in balance baseFree %v", ex.account.quotedFree))
+	} else if order.Side == "SELL" && ex.account.baseFree < order.Amount {
+		return "", errors.New(fmt.Sprintf("not enough money in balance baseFree %v", ex.account.baseFree))
+	}
 	if sum < 10 { // dollars
 		msg := fmt.Sprintf("exchanging sum not enough %f", sum)
 		ex.logger.Println("error", msg)
 		return "", errors.New(msg)
 	}
-	ex.account.mu.Lock()
+	ex.logger.Printf("exchanging sum %f", sum)
 	order.ID = uuid.New().String()
 	ex.account.orders = append(ex.account.orders, *order)
-	ex.account.mu.Unlock()
 	return order.ID, nil
 }
 
@@ -178,7 +185,7 @@ func (ex *fakeExchange) GetBalance(ctx context.Context,
 
 func (ex *fakeExchange) OpenedOrders(pair string) ([]exchange.Order, error) {
 	ex.account.mu.RLock()
-	ex.logger.Println("orders", len(ex.account.orders))
+	// ex.logger.Println("orders", len(ex.account.orders))
 	defer ex.account.mu.RUnlock()
 	return ex.account.orders, nil
 }

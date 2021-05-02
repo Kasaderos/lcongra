@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+
+    <script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+    <script>
+      // var selected;
+      // $(document).ready(function(){
+      //    $("#base_curr").change(function(){
+      //       selected = $(this).children("option:selected").val().text;
+      //   });
+      // });
+      class Bot {
+        constructor() {
+          this.name = $("input[type=text][name=bot_id]").val();
+          this.pair = $("#base_curr :selected").text() + '-' + $("#quote_curr :selected").text();
+          this.interval = $("select.interval :selected").text();
+          this.apikey = $("input[type=text][name=apikey]").val();
+          this.apisecret = $("input[type=text][name=secret]").val();
+        }   
+
+        text() {
+          var url = '';
+          return '<ul>'+
+                   '<li>' + this.name + '</li>'+
+                   '<li>' + this.pair + '</li>'+
+                   '<li>' + this.interval + '</li>'+
+                   '<li><a href=' + url + '/' + this.name + '/run' + '>' + 'run' +'</a></li>' + 
+                   '<li><a href=' + url + '/' + this.name + '/stop' + '>' + 'stop' +'</a></li>' + 
+                   '<li><a href=' + url + '/' + this.name + '/del' + '>' + 'del' +'</a></li>' + 
+                 '</ul>';
+          // dropdown for logs
+          // add text area
+        }
+      }
+      function createBot() {
+        var bot = new Bot();
+        return bot;
+      }
+      $(document).ready(function(){
+        $("#create_bot").click(function(){
+            var newBot = createBot();
+            $("#bot_list").append('<li>' + newBot.text() + '</li>');
+            // xhr request
+            // response status, state
+        });
+      });
+    </script>
+    <title>Lcongra cmder</title>
+
+  </head>
+
+  <body>
+    <label>Name</label>
+    <input type="text" name="bot_id" size="20">
+    <select id="base_curr">
+      <option value="XRP">XRP</option>
+      <option value="BTC">BTC</option>
+    </select>
+    <select id="quote_curr">
+      <option value="USDT">USDT</option>
+    </select>
+    <select class="interval">
+      <option value="1m">1m</option>
+      <option value="3m">3m</option>
+      <option value="5m">5m</option>
+    </select>
+    <label>Apikey</label>
+    <input type="text" name="apikey" size="40">
+    <label>Apisecret</label>
+    <input type="text" name="apisecret" size="40">
+    <button id="create_bot" type="button">Create</button>
+    <ul id="bot_list">
+      <!-- <li>
+        <div>
+          <p>ID</p>
+          <p>BASE-QUOTE</p>
+          <p>INTERVAL</p>
+          <p>STATE</p>
+          <p>PROFIT</p>
+          <p>ORDERS</p>
+          <ul>
+            <li>ORDER1</li>
+            <li>ORDER2</li>
+            <li>...</li>
+          </ul>
+          <button>Run</button>
+          <button>Stop</button>
+          <button>Delete</button>
+        </div>
+      </li>
+      <li>Bot 2</li>
+      <li>Bot 2</li> -->
+    </ul>
+  </body>
+</html>

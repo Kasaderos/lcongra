@@ -49,6 +49,8 @@ func Autotrade(
 	switch interval {
 	case "3m":
 		sleepDuration = time.Minute * 3
+	case "1m":
+		sleepDuration = time.Minute
 	}
 
 	pair = ex.PairFormat(pair)
@@ -69,32 +71,37 @@ func Autotrade(
 			}
 		}
 		dir := getDirection(pair, interval)
+		log.Println("dir", dir)
 		if dir == Up {
 			rate, err := ex.GetRate(pair)
 			if err != nil {
 				continue
 			}
-			eps := rate + rate*0.001
-			order := exchange.Order{
+			log.Println("current", rate)
+			eps := rate * 0.0005
+			buyOrder := exchange.Order{
 				PushedTime: time.Now(),
+				OrderTime:  time.Now().Add(10 * time.Second),
 				Pair:       pair,
 				Type:       "LIMIT", // todo get from exchange
 				Side:       "BUY",
 				Price:      rate + eps,
-				Amount:     fixedAmount,
+				Amount:     fixedAmount / (rate + eps),
 			}
-			queue.Push(order)
+			log.Printf("order pushed %+v", buyOrder)
+			queue.Push(buyOrder)
 
-			eps = rate + rate*0.005
-			order = exchange.Order{
+			eps = rate * 0.0027
+			order := exchange.Order{
 				PushedTime: time.Now(),
 				OrderTime:  time.Now().Add(sleepDuration * 60), // todo OrderTime???
 				Pair:       pair,
 				Type:       "LIMIT", // todo get from exchange
 				Side:       "SELL",
 				Price:      rate + eps,
-				Amount:     fixedAmount,
+				Amount:     buyOrder.Amount,
 			}
+			log.Printf("order pushed %+v", order)
 			queue.Push(order)
 		}
 
