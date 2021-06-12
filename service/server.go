@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log"
 	"net/http"
-	"time"
+
+	"github.com/kasaderos/lcongra/exchange"
 )
 
 // commands
@@ -24,65 +27,85 @@ type AgentServiceHandler struct {
 	ctx context.Context
 }
 
-func (h *AgentServiceHandler) ServeHTTP(r *http.Request, w http.ResponseWriter) {
-	switch r.Method {
-	case "POST":
-		id := r.Header.Get("id")
-		apikey := r.Header.Get("apikey")
-		apisecret := r.Header.Get("apisecret")
-		baseCurr := r.Header.Get("baseCurrency")
-		quoteCurr := r.Header.Get("quoteCurrency")
-		interval := r.Header.Get("interval")
+type RequestParams struct {
+	ID        string  `json:"id"`
+	Pair      string  `json:"pair"`
+	Interval  string  `json:"interval"`
+	State     string  `json:"state"`
+	Cache     float64 `json:"cache"`
+	Apikey    string  `json:"apikey,omitempty"`
+	Apisecret string  `json:"apisecret,omitempty"`
+}
 
-		err := validate(id, apikey, apisecret, baseCurr, quoteCurr, interval)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(err.Error()))
-		}
+func getParams(r *http.Request) (*RequestParams, error) {
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		return nil, err
+	}
+	req := new(RequestParams)
+	err = json.Unmarshal(data, req)
+	return req, err
+}
 
-		err = h.srv.Create(
-			id,
-			apikey,
-			apisecret,
-			baseCurr,
-			quoteCurr,
-			interval,
-		)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(err.Error()))
-		}
-	case "GET": // signals
-		id := r.Header.Get("id")
+func (h *AgentServiceHandler) sendlistBots(req *RequestParams, w http.ResponseWriter) {
+	info := h.srv.GetListInfo()
+	data, err := json.Marshal(info)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	w.Write(data)
+}
 
-		agent, err := h.srv.GetAgent(id)
-		if err != nil {
-			w.WriteHeader(http.StatusBadRequest)
-			w.Write([]byte(err.Error()))
-		}
+func (h *AgentServiceHandler) createBot(req *RequestParams, w http.ResponseWriter) {
+	base, quote := exchange.Currencies(req.Pair)
+	err := validate(req.ID, req.Apikey, req.Apisecret, base, quote, req.Interval)
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	err = h.srv.Create(req.ID, req.Apikey, req.Apisecret, base, quote, req.Interval)
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
 
-		command := r.Header.Get("command")
-		switch command {
-		case CmdRun:
-			go agent.Run(h.ctx)
-		case CmdStop:
-			h.srv.Send(Message{id, CmdStop})
-		case CmdDelete:
-			h.srv.Send(Message{id, CmdDelete})
-			h.srv.Delete(id)
-		case CmdGetState:
-			h.srv.Send(Message{id, CmdGetState})
-			for {
-				msg := h.srv.Receive(id)
-				data, err := json.Marshal(msg)
-				if err != nil {
-					w.WriteHeader(http.StatusInternalServerError)
-					return
-				}
-				w.Write(data)
-				time.Sleep(time.Second * 3)
-			}
-		}
+func (h *AgentServiceHandler) deleteBot(req *RequestParams, w http.ResponseWriter) {
+	err := h.srv.stopAndDeleteAgent(req.ID)
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *AgentServiceHandler) runBot(req *RequestParams, w http.ResponseWriter) {
+	err := h.srv.RunAgent(req.ID)
+	if err != nil {
+		http.Error(w, err.Error(), 400)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+}
+
+func (h *AgentServiceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	params, err := getParams(r)
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	switch r.URL.Path {
+	case "/create":
+		h.createBot(params, w)
+	case "/list":
+		h.sendlistBots(params, w)
+	case "/run":
+		h.runBot(params, w)
+	case "/stop":
+	case "/delete":
+		h.deleteBot(params, w)
 	}
 }
 

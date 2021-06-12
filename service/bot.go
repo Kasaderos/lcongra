@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"log"
+	"sync"
 	"time"
 
 	"github.com/kasaderos/lcongra/exchange"
@@ -26,7 +27,12 @@ func (s State) String() string {
 }
 
 type Bot struct {
-	state    State
+	ms    sync.RWMutex // TODO
+	state State
+
+	mc    sync.RWMutex // TODO
+	cache float64
+
 	queue    *OrderQueue
 	exchange exchange.Exchanger
 	logger   *log.Logger
@@ -40,8 +46,32 @@ func NewBot(queue *OrderQueue, ex exchange.Exchanger, logger *log.Logger) *Bot {
 	}
 }
 
-func (b *Bot) StartSM(ctx context.Context, msgChan <-chan string, infoChan chan<- string) {
-	b.state = Start
+func (b *Bot) GetState() State {
+	b.ms.RLock()
+	defer b.ms.RUnlock()
+	return b.state
+}
+
+func (b *Bot) SetState(s State) {
+	b.ms.Lock()
+	defer b.ms.Unlock()
+	b.state = s
+}
+
+func (b *Bot) GetCache() float64 {
+	b.ms.RLock()
+	defer b.ms.RUnlock()
+	return b.cache
+}
+
+func (b *Bot) SetCache(f float64) {
+	b.ms.Lock()
+	defer b.ms.Unlock()
+	b.cache = f
+}
+
+func (b *Bot) StartSM(ctx context.Context, msgChan <-chan string) {
+	b.SetState(Start)
 	var currentOrder exchange.Order
 	b.logger.Println("SM started")
 SM:
@@ -53,10 +83,8 @@ SM:
 			break SM
 		case cmd := <-msgChan:
 			if cmd == CmdStop {
-				b.state = Nothing
+				b.SetState(Nothing)
 				b.logger.Println("stopped")
-			} else if cmd == CmdGetState {
-				infoChan <- b.state.String()
 			}
 		default:
 		}
@@ -97,7 +125,7 @@ SM:
 			}
 
 			b.logger.Printf("got order %+v\n", currentOrder)
-			b.state = CreateOrder
+			b.SetState(CreateOrder)
 
 		case CreateOrder:
 			b.logger.Println("state", b.state)
@@ -115,13 +143,13 @@ SM:
 				}
 			}
 			if err != nil {
-				b.state = PopOrder
+				b.SetState(PopOrder)
 				b.logger.Println("can't create order", err)
 				continue
 			}
 
 			b.logger.Printf("order created %+v\n", currentOrder)
-			b.state = CheckOrder
+			b.SetState(CheckOrder)
 
 		case CheckOrder:
 			b.logger.Println("state", b.state)
@@ -148,7 +176,7 @@ SM:
 				}
 			}
 			if exist {
-				b.state = WaitOrder
+				b.SetState(WaitOrder)
 			}
 		case WaitOrder:
 			b.logger.Println("state", b.state)
@@ -169,7 +197,7 @@ SM:
 			}
 			if len(orders) == 0 {
 				b.queue.Pop()
-				b.state = PopOrder
+				b.SetState(PopOrder)
 				b.logger.Printf("order finished %+v\n", currentOrder)
 				continue
 			}

@@ -62,7 +62,7 @@ func (mq *MQ) Receive(id string) Message {
 	return msg
 }
 
-func (mq *MQ) Add(id string) {
+func (mq *MQ) AddQueue(id string) {
 	mq.Lock()
 	defer mq.Unlock()
 	mq.queues[id] = &queue{}

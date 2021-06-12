@@ -2,15 +2,15 @@ package service
 
 import (
 	"context"
-	"fmt"
-	"time"
+	"sync"
 
 	"github.com/kasaderos/lcongra/exchange"
-	ex "github.com/kasaderos/lcongra/exchange/fake"
 )
 
 type Agent struct {
 	*MQ
+	// READ ONLY
+	mu            sync.RWMutex
 	ID            string
 	baseCurrency  string
 	quoteCurrency string
@@ -18,43 +18,15 @@ type Agent struct {
 	bot           *Bot
 	queue         *OrderQueue
 	exchange      exchange.Exchanger // TODO make just api without any object
+	tradeCtx      context.Context
+	cancel        context.CancelFunc
 }
 
-func (ag *Agent) Run(ctx context.Context) {
-	msgChan := make(chan string)
-	infoChan := make(chan string)
-
-	tradeCtx, cancel := context.WithCancel(context.Background())
-	// for fake exchange, we need
-	go ex.Update(tradeCtx, ag.exchange)
-
-	go ag.bot.StartSM(tradeCtx, msgChan, infoChan)
-	go Autotrade(
-		tradeCtx,
-		fmt.Sprintf("%s-%s", ag.baseCurrency, ag.quoteCurrency),
-		ag.interval,
-		ag.bot.queue,
-		ag.exchange,
-	)
-
-	for {
-		select {
-		case <-ctx.Done():
-			cancel()
-			return
-		case msg := <-infoChan:
-			ag.MQ.Send(Message{"root", msg})
-		default:
-		}
-
-		msg := ag.MQ.Receive(ag.ID)
-		switch msg.Data {
-		case CmdDelete:
-			cancel()
-			return
-		default:
-			msgChan <- msg.Data
-		}
-		time.Sleep(10 * time.Second)
-	}
+type AgentInfo struct {
+	ID       string  `json:"id"`
+	Pair     string  `json:"pair"`
+	Interval string  `json:"interval"`
+	State    string  `json:"state"`
+	Cache    float64 `json:"cache"`
+	// TODO
 }
