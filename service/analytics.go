@@ -3,9 +3,10 @@ package service
 import (
 	"context"
 	"log"
+	"math"
 	"os/exec"
 	"time"
-
+	"strings"
 	"github.com/kasaderos/lcongra/exchange"
 )
 
@@ -20,15 +21,20 @@ const (
 func getDirection(pair string, interval string) Direction {
 	app := "Rscript"
 	// TODO
-	cmd := exec.Command(app, "--vanilla", "../../scripts/la1.R", interval, pair)
+	cmd := exec.Command(app, "--vanilla", "../../scripts/la1_rf.R", interval, pair)
 
 	output, err := cmd.Output()
 	if err != nil {
 		log.Println("os exec output", err)
 		return Stay
 	}
-	dir := string(output)
-	switch dir {
+	res := string(output)
+	log.Println(res)
+	dir := strings.Split(res, " ")
+	if len(dir) == 0 {
+		return Stay
+	}
+	switch dir[0] {
 	case "-1":
 		return Down
 	case "1":
@@ -50,7 +56,7 @@ func Autotrade(
 	case "3m":
 		sleepDuration = time.Minute * 3
 	case "1m":
-		sleepDuration = time.Minute
+		sleepDuration = time.Second * 20 
 	}
 
 	pair = ex.PairFormat(pair)
@@ -71,7 +77,7 @@ func Autotrade(
 			}
 		}
 		dir := getDirection(pair, interval)
-		log.Println("dir", dir)
+		// log.Println("dir", dir)
 		if dir == Up {
 			rate, err := ex.GetRate(pair)
 			if err != nil {
@@ -85,28 +91,33 @@ func Autotrade(
 				Pair:       pair,
 				Type:       "LIMIT", // todo get from exchange
 				Side:       "BUY",
-				Price:      rate + eps,
-				Amount:     fixedAmount / (rate + eps),
+				Price:      round(rate+eps, 2),
+				Amount:     round(fixedAmount/(rate+eps), 8),
 			}
-			log.Printf("order pushed %+v", buyOrder)
+			// log.Printf("order pushed %+v", buyOrder)
 			queue.Push(buyOrder)
 
-			eps = rate * 0.0027
+			eps = rate * 0.003
 			order := exchange.Order{
 				PushedTime: time.Now(),
 				OrderTime:  time.Now().Add(sleepDuration * 60), // todo OrderTime???
 				Pair:       pair,
 				Type:       "LIMIT", // todo get from exchange
 				Side:       "SELL",
-				Price:      rate + eps,
-				Amount:     buyOrder.Amount,
+				Price:      round(rate+eps, 2),
+				Amount:     round(buyOrder.Amount-1e-6, 8),
 			}
-			log.Printf("order pushed %+v", order)
+			// log.Printf("order pushed %+v", order)
 			queue.Push(order)
 		}
 
 		time.Sleep(sleepDuration)
 	}
+}
+
+func round(f float64, n int) float64 {
+	base := math.Pow10(n)
+	return math.Round(f*base) / base
 }
 
 /*

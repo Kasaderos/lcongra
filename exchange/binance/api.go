@@ -165,8 +165,7 @@ func (ex *binance) CreateOrder(order *exchange.Order) (id string, err error) {
 	return orderID, nil
 }
 
-func (ex *binance) GetBalance(ctx context.Context,
-	currency string) (amount float64, err error) {
+func (ex *binance) GetBalance(currency string) (amount float64, err error) {
 	// time now in milliseconds
 	timestamp := strconv.FormatInt(time.Now().Unix()*1000, 10)
 	query := url.Values{}
@@ -319,7 +318,7 @@ func (ex *binance) GetInformation(ctx context.Context, pair string) (info *excha
 	}
 
 	_, quoated := exchange.Currencies(pair)
-	amount, err := ex.GetBalance(context.Background(), quoated)
+	amount, err := ex.GetBalance(quoated)
 	if err != nil {
 		return nil, err
 	}

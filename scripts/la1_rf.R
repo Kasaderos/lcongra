@@ -29,25 +29,25 @@ colnames(df) <- c('OpenTime', 'Open', 'High', 'Low', 'Close',
 data_ex <- data.frame(Time=df$CloseTime, Close=df$High)
 data_ex$Time <- as_datetime(data_ex$Time / 1000)
 
-orig <- data_ex
-orig <- orig[1:(dim(data_ex)[1]),2]
+orig <- data_ex$Close
+#orig <- orig[1:(dim(data_ex)[1]),2]
 N <- length(orig)
 ts <- orig
-p <- 60
-X <- matrix(ts[1:p])
+p <- 40
+X <- matrix(rev(ts[1:p]))
 for (i in 2:(N-p+1)) {
-    X <- cbind(X, ts[i:(i+p-1)])
+    X <- cbind(X, rev(ts[i:(i+p-1)]))
 }
+
 # norm(x, "F") x - matrix
 norms <- c()
-for (i in 1:(dim(X)[2]-1)) {
-    if (i != N-p+1) {
-        norms <- c(norms, norm(as.matrix(X[,i]-X[,N-p+1]), "I"))
-    }
+for (i in 1:(N-p)) {
+    norms <- c(norms, norm(as.matrix(X[,i]-X[,N-p+1]), "F"))
 }
+
 nearest <-min(norms) 
 eps <- 0
-step <- nearest*0.25
+step <- nearest*0.01
 num_neighbors <- 0
 while (num_neighbors < 3 * (p+1)){
     ws <- which(norms < (nearest + eps))
@@ -57,41 +57,49 @@ while (num_neighbors < 3 * (p+1)){
 
 if (length(norms) == 0) {
     print("neighbors == 0")
-    quit(status=1)
 }
 
-Y <- X[dim(X)[1],(ws+1)]
+Y <- X[1,(ws+1)]
 A <- t(X[,ws])
-m <- lm(Y ~ A)
-#summary(m)
+df <- as.data.frame(A)
+df <- cbind(Y, df)
+library(randomForest)
+set.seed(0)
+rfManyReg <- randomForest(Y ~ ., data=df)
+#print(rfManyReg)
 
-predict <- function(x_t, coef) {
-    y <- coef[1] + t(x_t) %*% coef[2:length(coef)]
-    return(y)
-}
 x_t <- ts[(N-p+1):(N)]
-a <- as.vector(m$coefficients)
-y <- predict(x_t, a)
+pr <- data.frame(t(rev(x_t)))
+colnames(pr) <- colnames(df)[2:dim(df)[2]]
+y <- predict(rfManyReg, pr)
 
+#print(data_ex[N+1,2])
+#print(y)
+tss <- ts
+#N <- p
 for (i in 1:p){
-    y <- predict(ts[(N-p+1):(N)], a)
-    ts <- c(ts, y)
+    x_t <- tss[(N-p+1):(N)]
+    pr <- data.frame(t(rev(x_t)))
+    colnames(pr) <- colnames(df)[2:dim(df)[2]]
+    y <- predict(rfManyReg, pr)
+    tss <- c(tss, y)
     N <- N+1
 }
-matplot(data.frame(ts, c(data_ex[,2], rep(NA, p))), type = "l", col = c('green', 'red'),
+matplot(data.frame(tss, c(data_ex[,2], rep(NA, p))), type = "l", col = c('green', 'red'),
         ylab="price", xlab="time")
 abline(v=N-p, col='red')
+
 #print(paste("p =",p, "success"))
 max_price <- max(ts[(length(ts)-p):length(ts)])
 min_price <- min(ts[(length(ts)-p):length(ts)])
 
 price <- ts[length(ts)-p]
-eps <- price * 0.0027
-
+eps <- price * 0.003
 if (price < min_price + eps && price < max_price - eps){ # && price - eps < min_price) {
-    cat(paste("1", min_price, max_price))
+    cat(paste("1", price, min_price, max_price))
 } else if (price > min_price + eps) {
-    cat(paste("-1", min_price, max_price))
+    cat(paste("-1", price, min_price, max_price))
 } else {
-    cat(paste("0", min_price, max_price))
+    cat(paste("0", price, min_price, max_price))
 }
+

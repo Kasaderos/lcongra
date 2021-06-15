@@ -3,9 +3,8 @@ package main
 import (
 	"context"
 	"log"
+	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
 
 	"github.com/kasaderos/lcongra/config"
 	exchange "github.com/kasaderos/lcongra/exchange/fake"
@@ -29,23 +28,17 @@ func main() {
 	// reporter := service.NewReporter(conf.ClientURL, logger, chanMsg)
 
 	ctx, quit := context.WithCancel(context.Background())
-	go exchange.Update(ctx, binance)
 
 	logger = log.New(os.Stdout, "[observer] ", log.Flags())
 	observer := service.NewObserver(binance, logger, chanMsg, []string{conf.Pair})
 	go observer.Observe(ctx)
-	// go reporter.Report(ctx)
 
+	logger = log.New(os.Stdout, "[mas] ", log.Flags())
+	srv := service.NewAgentService(observer, nil, logger)
+
+	handler := service.NewAgentServiceHandler(srv, ctx)
+
+	_ = quit // TODO
 	log.Println("service started 8080")
-	sig := make(chan os.Signal, 1)
-	signal.Notify(sig, syscall.SIGINT)
-	for {
-		select {
-		case <-chanMsg:
-
-		case <-sig:
-			quit()
-			return
-		}
-	}
+	log.Fatal(http.ListenAndServe(":8080", handler))
 }

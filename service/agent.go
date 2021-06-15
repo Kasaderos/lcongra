@@ -8,7 +8,7 @@ import (
 )
 
 type Agent struct {
-	*MQ
+	// *MQ
 	// READ ONLY
 	mu            sync.RWMutex
 	ID            string
@@ -18,7 +18,7 @@ type Agent struct {
 	bot           *Bot
 	queue         *OrderQueue
 	exchange      exchange.Exchanger // TODO make just api without any object
-	tradeCtx      context.Context
+	ctx           context.Context
 	cancel        context.CancelFunc
 }
 

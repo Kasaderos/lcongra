@@ -7,7 +7,6 @@ import (
 	"log"
 	"os"
 	"sync"
-	"time"
 
 	ex "github.com/kasaderos/lcongra/exchange/fake"
 )
@@ -46,12 +45,12 @@ func (s *AgentsService) Create(
 	queue := NewOrderQueue()
 	prefix = fmt.Sprintf("[%s] ", id)
 	logger = log.New(os.Stdout, prefix, log.Default().Flags())
-	bot := NewBot(queue, exchange, logger)
+	bot := NewBot(queue, exchange, logger, baseCurr+"-"+quoteCurr)
 
-	s.AddQueue(id)
+	// s.AddQueue(id)
 
 	agent := &Agent{
-		MQ:            s.MQ,
+		// MQ:            s.MQ,
 		ID:            id,
 		bot:           bot,
 		queue:         queue,
@@ -131,24 +130,29 @@ func (s *AgentsService) stopAndDeleteAgent(id string) error {
 func (s *AgentsService) RunAgent(id string) error {
 	ag, err := s.GetAgent(id)
 	if err != nil {
+		s.logger.Println("agent not found", id)
 		return err
 	}
-	ag.RLock()
-	_, ok := ag.tradeCtx.Deadline()
-	ag.RUnlock()
-
-	if ok {
-		return errors.New(id + " is running")
+	ag.mu.RLock()
+	if ag.ctx != nil {
+		_, ok := ag.ctx.Deadline()
+		if !ok {
+			return errors.New(id + " is running")
+		}
 	}
+	ag.mu.RUnlock()
 
 	msgChan := make(chan string)
 
-	tradeCtx, cancel := context.WithCancel(context.Background())
+	ctx, quit := context.WithCancel(context.Background())
 	ag.mu.Lock()
-	ag.tradeCtx = tradeCtx
-	ag.cancel = cancel
+	ag.ctx = ctx
+	ag.cancel = quit
 	ag.mu.Unlock()
+	s.logger.Println("bot started", id)
 	go func() {
+
+		tradeCtx, cancel := context.WithCancel(context.Background())
 		// for fake exchange, we need
 		go ex.Update(tradeCtx, ag.exchange)
 
@@ -163,23 +167,24 @@ func (s *AgentsService) RunAgent(id string) error {
 
 		for {
 			select {
-			case <-tradeCtx.Done():
+			case <-ctx.Done():
 				cancel()
+				ag.bot.logger.Println("stopped")
 				return
-			default:
+				// default:
 			}
 
-			msg := ag.MQ.Receive(ag.ID)
-			switch msg.Data {
-			case CmdDelete:
-				cancel()
-				return
-			default:
-				if msg.Data != "no message" {
-					msgChan <- msg.Data
-				}
-			}
-			time.Sleep(2 * time.Second)
+			// msg := ag.MQ.Receive(ag.ID)
+			// switch msg.Data {
+			// case CmdDelete:
+			// 	cancel()
+			// 	return
+			// default:
+			// 	if msg.Data != "no message" {
+			// 		msgChan <- msg.Data
+			// 	}
+			// }
+			// time.Sleep(2 * time.Second)
 		}
 	}()
 	return nil

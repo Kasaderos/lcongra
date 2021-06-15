@@ -39,6 +39,13 @@
         return bot;
       }
       $(document).ready(function(){
+        $.ajax({
+          url: 'http://127.0.0.1:8080/', 
+          data: 'my data',
+          success: function(data) {
+              console.log(data);
+          },
+        });
         $("#create_bot").click(function(){
             var newBot = createBot();
             $("#bot_list").append('<li>' + newBot.text() + '</li>');

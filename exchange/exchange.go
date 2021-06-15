@@ -32,6 +32,7 @@ type Exchanger interface {
 	OpenedOrders(string) ([]Order, error)
 	GetRate(string) (float64, error)
 	PairFormat(string) string
+	GetBalance(string) (float64, error)
 }
 
 func GetPrecision(f float64) int {

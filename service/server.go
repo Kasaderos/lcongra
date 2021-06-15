@@ -27,12 +27,19 @@ type AgentServiceHandler struct {
 	ctx context.Context
 }
 
+func NewAgentServiceHandler(srv *AgentsService, ctx context.Context) *AgentServiceHandler {
+	return &AgentServiceHandler{
+		srv,
+		ctx,
+	}
+}
+
 type RequestParams struct {
-	ID        string  `json:"id"`
-	Pair      string  `json:"pair"`
-	Interval  string  `json:"interval"`
-	State     string  `json:"state"`
-	Cache     float64 `json:"cache"`
+	ID        string  `json:"id,omitempty"`
+	Pair      string  `json:"pair,omitempty"`
+	Interval  string  `json:"interval,omitempty"`
+	State     string  `json:"state,omitempty"`
+	Cache     float64 `json:"cache,omitempty"`
 	Apikey    string  `json:"apikey,omitempty"`
 	Apisecret string  `json:"apisecret,omitempty"`
 }
@@ -42,6 +49,7 @@ func getParams(r *http.Request) (*RequestParams, error) {
 	if err != nil {
 		return nil, err
 	}
+	// fmt.Println(string(data))
 	req := new(RequestParams)
 	err = json.Unmarshal(data, req)
 	return req, err
@@ -58,12 +66,14 @@ func (h *AgentServiceHandler) sendlistBots(req *RequestParams, w http.ResponseWr
 }
 
 func (h *AgentServiceHandler) createBot(req *RequestParams, w http.ResponseWriter) {
+	h.srv.logger.Println("createBot")
 	base, quote := exchange.Currencies(req.Pair)
 	err := validate(req.ID, req.Apikey, req.Apisecret, base, quote, req.Interval)
 	if err != nil {
 		http.Error(w, err.Error(), 400)
 		return
 	}
+	h.srv.logger.Println("validated")
 	err = h.srv.Create(req.ID, req.Apikey, req.Apisecret, base, quote, req.Interval)
 	if err != nil {
 		http.Error(w, err.Error(), 400)
@@ -93,9 +103,10 @@ func (h *AgentServiceHandler) runBot(req *RequestParams, w http.ResponseWriter) 
 func (h *AgentServiceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	params, err := getParams(r)
 	if err != nil {
-		log.Println(err)
+		h.srv.logger.Println("server: json:", err)
 		return
 	}
+	// fmt.Println(r.URL.Path)
 	switch r.URL.Path {
 	case "/create":
 		h.createBot(params, w)

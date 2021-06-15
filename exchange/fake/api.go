@@ -45,8 +45,8 @@ func NewExchange(logger *log.Logger) exchange.Exchanger {
 		account: &Account{
 			baseCurrency:   "BTC",
 			quotedCurrency: "USDT",
-			baseFree:       0.0,   // BTC
-			quotedFree:     100.0, // USDT
+			baseFree:       0.0,  // BTC
+			quotedFree:     20.0, // USDT
 		},
 		pair:            "BTCUSDT",
 		pricePrecision:  2,
@@ -98,28 +98,22 @@ func (ex *fakeExchange) updateActiveOrders() {
 	orders := ex.account.orders
 
 	// fmt.Printf("[\n")
-	newOrders := make([]exchange.Order, len(orders))
-	copy(newOrders, orders)
-	for i, r := range orders {
+	newOrders := make([]exchange.Order, 0, len(orders))
+	for _, r := range orders {
 		if r.Side == "BUY" && r.Price > currentPrice {
 			logger.Println(r.ID, "completed")
-			ex.account.quotedFree -= r.Price * r.Amount
-			roundZero(&ex.account.quotedFree)
-			ex.account.baseFree += r.Amount - r.Amount*ex.makerCommission
+			ex.account.quotedFree -= round(r.Price*r.Amount, 8)
+			ex.account.baseFree += round(r.Amount-r.Amount*ex.makerCommission, 8)
 			logger.Println("baseFree", ex.account.baseFree, "quotedFree", ex.account.quotedFree)
 			// completed
-			newOrders[i], newOrders[len(newOrders)-1] = newOrders[len(newOrders)-1], newOrders[i]
-			newOrders = newOrders[:len(newOrders)-1]
 		} else if r.Side == "SELL" && r.Price < currentPrice {
 			logger.Println(r.ID, "completed")
-			ex.account.baseFree -= r.Amount
-			roundZero(&ex.account.baseFree)
+			ex.account.baseFree -= round(r.Amount, 8)
 			sum := r.Price * r.Amount
-			ex.account.quotedFree += sum - (sum * ex.makerCommission)
+			ex.account.quotedFree += round(sum-(sum*ex.makerCommission), 8)
 			logger.Println("baseFree", ex.account.baseFree, "quotedFree", ex.account.quotedFree)
-			// completed
-			newOrders[i], newOrders[len(newOrders)-1] = newOrders[len(newOrders)-1], newOrders[i]
-			newOrders = newOrders[:len(newOrders)-1]
+		} else {
+			newOrders = append(newOrders, r)
 		}
 		// fmt.Printf("%d orderID %s\n", i, r.ID)
 	}
@@ -127,10 +121,9 @@ func (ex *fakeExchange) updateActiveOrders() {
 	// fmt.Printf("]\n")
 }
 
-func roundZero(a *float64) {
-	if math.Abs(*a) < 1e-2 {
-		*a = 0.0
-	}
+func round(f float64, n int) float64 {
+	base := math.Pow10(n)
+	return math.Round(f*base) / base
 }
 
 func (ex *fakeExchange) PairFormat(pair string) string {
@@ -154,9 +147,9 @@ func (ex *fakeExchange) CreateOrder(order *exchange.Order) (string, error) {
 	ex.account.mu.Lock()
 	defer ex.account.mu.Unlock()
 	if order.Side == "BUY" && ex.account.quotedFree < sum {
-		return "", errors.New(fmt.Sprintf("not enough money in balance baseFree %v", ex.account.quotedFree))
-	} else if order.Side == "SELL" && ex.account.baseFree < order.Amount {
-		return "", errors.New(fmt.Sprintf("not enough money in balance baseFree %v", ex.account.baseFree))
+		return "", errors.New(fmt.Sprintf("buy not enough money in balance baseFree %v %v", ex.account.quotedFree, order.Amount))
+	} else if order.Side == "SELL" && ex.account.baseFree-order.Amount < 0 {
+		return "", errors.New(fmt.Sprintf("sell not enough money in balance baseFree %v %v", ex.account.baseFree, order.Amount))
 	}
 	if sum < 10 { // dollars
 		msg := fmt.Sprintf("exchanging sum not enough %f", sum)
@@ -169,9 +162,10 @@ func (ex *fakeExchange) CreateOrder(order *exchange.Order) (string, error) {
 	return order.ID, nil
 }
 
-func (ex *fakeExchange) GetBalance(ctx context.Context,
-	curr string) (amount float64, err error) {
-	ex.logger.Println("got", curr)
+func (ex *fakeExchange) GetBalance(curr string) (amount float64, err error) {
+	ex.account.mu.Lock()
+	defer ex.account.mu.Unlock()
+
 	if curr == ex.account.baseCurrency {
 		ex.logger.Println(curr, ex.account.baseFree)
 		return ex.account.baseFree, nil

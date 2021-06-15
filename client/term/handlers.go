@@ -22,7 +22,12 @@ type BotInfo struct {
 }
 
 func getAllBots() {
-	resp, err := http.Post(*serverURL, "", nil)
+	data, err := json.Marshal(BotInfo{})
+	if err != nil {
+		log.Println(err)
+		return
+	}
+	resp, err := http.Post(listBotsURL, "", bytes.NewBuffer(data))
 	if err != nil {
 		log.Println(err)
 		return
@@ -30,7 +35,7 @@ func getAllBots() {
 
 	defer resp.Body.Close()
 
-	data, err := io.ReadAll(resp.Body)
+	data, err = io.ReadAll(resp.Body)
 	if err != nil {
 		log.Println(err)
 		return
@@ -123,6 +128,7 @@ func runBot(botID string) {
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Println(err)
+		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

@@ -31,18 +31,21 @@ type Bot struct {
 	state State
 
 	mc    sync.RWMutex // TODO
+	pair  string
 	cache float64
+	count int
 
 	queue    *OrderQueue
 	exchange exchange.Exchanger
 	logger   *log.Logger
 }
 
-func NewBot(queue *OrderQueue, ex exchange.Exchanger, logger *log.Logger) *Bot {
+func NewBot(queue *OrderQueue, ex exchange.Exchanger, logger *log.Logger, pair string) *Bot {
 	return &Bot{
 		queue:    queue,
 		exchange: ex,
 		logger:   logger,
+		pair:     pair,
 	}
 }
 
@@ -59,15 +62,26 @@ func (b *Bot) SetState(s State) {
 }
 
 func (b *Bot) GetCache() float64 {
-	b.ms.RLock()
-	defer b.ms.RUnlock()
-	return b.cache
-}
-
-func (b *Bot) SetCache(f float64) {
+	base, quote := exchange.Currencies(b.pair)
+	baseAmount, err := b.exchange.GetBalance(base)
+	if err != nil {
+		b.logger.Println(err)
+		return 0.0
+	}
+	quoteAmount, err := b.exchange.GetBalance(quote)
+	if err != nil {
+		b.logger.Println(err)
+		return 0.0
+	}
+	price, err := b.exchange.GetRate(b.pair)
+	if err != nil {
+		b.logger.Println(err)
+		return 0.0
+	}
 	b.ms.Lock()
 	defer b.ms.Unlock()
-	b.cache = f
+	b.cache = price*baseAmount + quoteAmount
+	return b.cache
 }
 
 func (b *Bot) StartSM(ctx context.Context, msgChan <-chan string) {
@@ -124,7 +138,7 @@ SM:
 				time.Sleep(now.Sub(currentOrder.OrderTime))
 			}
 
-			b.logger.Printf("got order %+v\n", currentOrder)
+			// b.logger.Printf("got order %+v\n", currentOrder)
 			b.SetState(CreateOrder)
 
 		case CreateOrder:
@@ -179,7 +193,7 @@ SM:
 				b.SetState(WaitOrder)
 			}
 		case WaitOrder:
-			b.logger.Println("state", b.state)
+			// b.logger.Println("state", b.state)
 			var (
 				orders []exchange.Order
 				err    error

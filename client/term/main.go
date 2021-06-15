@@ -8,7 +8,7 @@ import (
 )
 
 var (
-	serverURL    = flag.String("serveraddr", "127.0.0.1:8080", "server url")
+	serverURL    = flag.String("serveraddr", "http://127.0.0.1:8080", "server url")
 	listBotsURL  string
 	createBotURL string
 	runBotURL    string
@@ -35,8 +35,11 @@ func main() {
 	currentBot := "unknown"
 	//	printHelp()
 	var line string
+	fmt.Println("-------------------------------------------------")
+	fmt.Println("current bot:", currentBot)
+	fmt.Println("-------------------------------------------------")
 	for {
-		fmt.Println("current bot:", currentBot)
+		fmt.Printf(">>> ")
 		_, err := fmt.Scanf("%s\n", &line)
 		if err != nil {
 			if err == io.EOF {
@@ -66,6 +69,8 @@ func main() {
 			runBot(currentBot)
 		case "stop":
 			stopBot(currentBot)
+		case "delete":
+			deleteBot(currentBot)
 		}
 
 	}
