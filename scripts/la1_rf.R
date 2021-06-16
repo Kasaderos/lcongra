@@ -10,6 +10,9 @@ interval <- args[1]
 #startTime <- trunc(unclass(Sys.time() - 150 * 24 * 3600)) * 1000
 #endTime <- trunc(unclass(Sys.time())) * 1000
 symbol <- args[2]
+
+pdf(paste0(symbol, ".pdf"))
+
 limit <- 1000
 URL <- paste0(endpoint, url, 
               '?symbol=', symbol, 
@@ -85,10 +88,10 @@ for (i in 1:p){
     tss <- c(tss, y)
     N <- N+1
 }
+#png(file=paste0(symbol, ".png")
 matplot(data.frame(tss, c(data_ex[,2], rep(NA, p))), type = "l", col = c('green', 'red'),
         ylab="price", xlab="time")
 abline(v=N-p, col='red')
-
 #print(paste("p =",p, "success"))
 max_price <- max(ts[(length(ts)-p):length(ts)])
 min_price <- min(ts[(length(ts)-p):length(ts)])
@@ -102,4 +105,3 @@ if (price < min_price + eps && price < max_price - eps){ # && price - eps < min_
 } else {
     cat(paste("0", price, min_price, max_price))
 }
-
