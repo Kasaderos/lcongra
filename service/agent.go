@@ -3,8 +3,6 @@ package service
 import (
 	"context"
 	"sync"
-
-	"github.com/kasaderos/lcongra/exchange"
 )
 
 type Agent struct {
@@ -17,9 +15,11 @@ type Agent struct {
 	interval      string
 	bot           *Bot
 	queue         *OrderQueue
-	exchange      exchange.Exchanger // TODO make just api without any object
 	ctx           context.Context
 	cancel        context.CancelFunc
+
+	apikey    string
+	apisecret string
 }
 
 type AgentInfo struct {

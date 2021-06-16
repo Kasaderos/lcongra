@@ -4,9 +4,11 @@ import (
 	"context"
 	"log"
 	"math"
+	"os"
 	"os/exec"
-	"time"
 	"strings"
+	"time"
+
 	"github.com/kasaderos/lcongra/exchange"
 )
 
@@ -48,18 +50,25 @@ func getDirection(pair string, interval string) Direction {
 func Autotrade(
 	ctx context.Context,
 	pair, interval string,
+	exCtx context.Context,
 	queue *OrderQueue,
 	ex exchange.Exchanger,
 ) {
+	logger := log.New(os.Stdout, "[autotrade] ", log.Default().Flags())
 	var sleepDuration time.Duration
 	switch interval {
 	case "3m":
 		sleepDuration = time.Minute * 3
 	case "1m":
-		sleepDuration = time.Second * 20 
+		sleepDuration = time.Second * 20
 	}
 
-	pair = ex.PairFormat(pair)
+	info, err := ex.GetInformation(exCtx, pair)
+	if err != nil {
+		logger.Println("[autotrade] ", err)
+		return
+	}
+
 	minAmount := 11.0
 	fixedAmount := minAmount
 	for {
@@ -77,13 +86,13 @@ func Autotrade(
 			}
 		}
 		dir := getDirection(pair, interval)
-		// log.Println("dir", dir)
+		logger.Println("dir", dir)
 		if dir == Up {
-			rate, err := ex.GetRate(pair)
+			rate, err := ex.GetRate(exCtx, pair)
 			if err != nil {
 				continue
 			}
-			log.Println("current", rate)
+			logger.Println("current", rate)
 			eps := rate * 0.0005
 			buyOrder := exchange.Order{
 				PushedTime: time.Now(),
@@ -91,10 +100,10 @@ func Autotrade(
 				Pair:       pair,
 				Type:       "LIMIT", // todo get from exchange
 				Side:       "BUY",
-				Price:      round(rate+eps, 2),
-				Amount:     round(fixedAmount/(rate+eps), 8),
+				Price:      round(rate+eps, info.PricePrecision),
+				Amount:     round(fixedAmount/(rate+eps), info.BasePrecision),
 			}
-			// log.Printf("order pushed %+v", buyOrder)
+			log.Printf("order pushed %+v", buyOrder)
 			queue.Push(buyOrder)
 
 			eps = rate * 0.003
@@ -104,10 +113,10 @@ func Autotrade(
 				Pair:       pair,
 				Type:       "LIMIT", // todo get from exchange
 				Side:       "SELL",
-				Price:      round(rate+eps, 2),
-				Amount:     round(buyOrder.Amount-1e-6, 8),
+				Price:      round(rate+eps, info.PricePrecision),
+				Amount:     round(buyOrder.Amount-1e-6, info.QuotePrecision),
 			}
-			// log.Printf("order pushed %+v", order)
+			log.Printf("order pushed %+v", order)
 			queue.Push(order)
 		}
 

@@ -29,8 +29,7 @@ func (b *Observer) Observe(ctx context.Context) {
 		default:
 		}
 		for _, pair := range b.pairs {
-			pair := b.exchange.PairFormat(pair)
-			rate, err := b.exchange.GetRate(pair)
+			rate, err := b.exchange.GetRate(context.Background(), pair)
 			if err != nil {
 				b.logger.Println(pair, err)
 				continue

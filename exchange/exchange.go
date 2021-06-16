@@ -1,6 +1,7 @@
 package exchange
 
 import (
+	"context"
 	"errors"
 	"math"
 	"sort"
@@ -14,6 +15,7 @@ var (
 	ErrIncompleteData  = errors.New("error incomplete data")
 	ErrBrokenData      = errors.New("error broken data")
 	ErrOrderNotCreated = errors.New("order not created")
+	ErrKeysNotFound    = errors.New("keys not found")
 )
 
 type Order struct {
@@ -27,12 +29,15 @@ type Order struct {
 	Amount     float64
 }
 
+// pair format BTC-USDT
 type Exchanger interface {
-	CreateOrder(*Order) (string, error)
-	OpenedOrders(string) ([]Order, error)
-	GetRate(string) (float64, error)
-	PairFormat(string) string
-	GetBalance(string) (float64, error)
+	CreateOrder(ctx context.Context, order *Order) (id string, err error)
+	OpenedOrders(ctx context.Context, pair string) (orders []Order, err error)
+	GetRate(ctx context.Context, pair string) (rate float64, err error)
+	// BTC-USDT -> exchange format
+	PairFormat(ctx context.Context, pair string) (expair string)
+	GetBalance(ctx context.Context, currency string) (amount float64, err error)
+	GetInformation(ctx context.Context, pair string) (info *Information, err error)
 }
 
 func GetPrecision(f float64) int {

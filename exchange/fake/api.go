@@ -53,7 +53,7 @@ func NewExchange(logger *log.Logger) exchange.Exchanger {
 		basePrecision:   6,
 		price:           0,
 		logger:          logger,
-		realExchange:    binance.NewExchange(logger, "", ""),
+		realExchange:    binance.NewExchange(logger),
 		makerCommission: 0.001,
 	}
 }
@@ -77,7 +77,7 @@ func Update(ctx context.Context, ex exchange.Exchanger) {
 }
 
 func (ex *fakeExchange) updatePrice() {
-	rate, err := ex.realExchange.GetRate(ex.pair)
+	rate, err := ex.realExchange.GetRate(context.Background(), ex.pair)
 	if err != nil {
 		ex.logger.Println(err)
 		return
@@ -126,23 +126,23 @@ func round(f float64, n int) float64 {
 	return math.Round(f*base) / base
 }
 
-func (ex *fakeExchange) PairFormat(pair string) string {
+func (ex *fakeExchange) PairFormat(ctx context.Context, pair string) string {
 	b, q := exchange.Currencies(pair)
 	return b + q
 }
 
-func (ex *fakeExchange) Ping() error {
+func (ex *fakeExchange) Ping(ctx context.Context) error {
 	ex.logger.Println("success")
 	return nil
 }
 
-func (ex *fakeExchange) GetRate(pair string) (rate float64, err error) {
+func (ex *fakeExchange) GetRate(ctx context.Context, pair string) (rate float64, err error) {
 	ex.mu.RLock()
 	defer ex.mu.RUnlock()
 	return ex.price, nil
 }
 
-func (ex *fakeExchange) CreateOrder(order *exchange.Order) (string, error) {
+func (ex *fakeExchange) CreateOrder(ctx context.Context, order *exchange.Order) (string, error) {
 	sum := order.Price * order.Amount
 	ex.account.mu.Lock()
 	defer ex.account.mu.Unlock()
@@ -162,22 +162,22 @@ func (ex *fakeExchange) CreateOrder(order *exchange.Order) (string, error) {
 	return order.ID, nil
 }
 
-func (ex *fakeExchange) GetBalance(curr string) (amount float64, err error) {
+func (ex *fakeExchange) GetBalance(ctx context.Context, currency string) (amount float64, err error) {
 	ex.account.mu.Lock()
 	defer ex.account.mu.Unlock()
 
-	if curr == ex.account.baseCurrency {
-		ex.logger.Println(curr, ex.account.baseFree)
+	if currency == ex.account.baseCurrency {
+		ex.logger.Println(currency, ex.account.baseFree)
 		return ex.account.baseFree, nil
-	} else if curr == ex.account.quotedCurrency {
-		ex.logger.Println(curr, ex.account.quotedFree)
+	} else if currency == ex.account.quotedCurrency {
+		ex.logger.Println(currency, ex.account.quotedFree)
 		return ex.account.quotedFree, nil
 	}
 
 	return -1, fmt.Errorf("error unknown currency")
 }
 
-func (ex *fakeExchange) OpenedOrders(pair string) ([]exchange.Order, error) {
+func (ex *fakeExchange) OpenedOrders(ctx context.Context, pair string) (orders []exchange.Order, err error) {
 	ex.account.mu.RLock()
 	// ex.logger.Println("orders", len(ex.account.orders))
 	defer ex.account.mu.RUnlock()

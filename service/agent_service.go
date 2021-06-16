@@ -8,7 +8,8 @@ import (
 	"os"
 	"sync"
 
-	ex "github.com/kasaderos/lcongra/exchange/fake"
+	"github.com/kasaderos/lcongra/exchange"
+	ex "github.com/kasaderos/lcongra/exchange/binance"
 )
 
 type AgentsService struct {
@@ -16,6 +17,7 @@ type AgentsService struct {
 	observer *Observer
 	reporter *Reporter
 	logger   *log.Logger
+	exchange exchange.Exchanger
 	sync.Mutex
 	agents map[string]*Agent
 }
@@ -23,11 +25,15 @@ type AgentsService struct {
 func NewAgentService(obs *Observer, rp *Reporter, lg *log.Logger) *AgentsService {
 	mq := NewMQ()
 	mq.AddQueue("master")
+	// TODO add other exchanges
+	logger := log.New(os.Stdout, "[binance] ", log.Default().Flags())
+	exchange := ex.NewExchange(logger)
 	return &AgentsService{
 		MQ:       mq,
 		observer: obs,
 		reporter: rp,
 		logger:   lg,
+		exchange: exchange,
 		agents:   make(map[string]*Agent),
 	}
 }
@@ -38,14 +44,19 @@ func (s *AgentsService) Create(
 	baseCurr, quoteCurr string,
 	interval string,
 ) error {
-	prefix := fmt.Sprintf("[exchange-%s] ", id)
-	logger := log.New(os.Stdout, prefix, log.Default().Flags())
+	exCtx := context.WithValue(
+		context.Background(),
+		"keys",
+		map[string]string{
+			"apikey":    apikey,
+			"apisecret": apisecret,
+		},
+	)
 	// set keys when real exchange
-	exchange := ex.NewExchange(logger)
 	queue := NewOrderQueue()
-	prefix = fmt.Sprintf("[%s] ", id)
-	logger = log.New(os.Stdout, prefix, log.Default().Flags())
-	bot := NewBot(queue, exchange, logger, baseCurr+"-"+quoteCurr)
+	prefix := fmt.Sprintf("[%s] ", id)
+	logger := log.New(os.Stdout, prefix, log.Default().Flags())
+	bot := NewBot(queue, s.exchange, logger, baseCurr+"-"+quoteCurr, exCtx)
 
 	// s.AddQueue(id)
 
@@ -54,10 +65,11 @@ func (s *AgentsService) Create(
 		ID:            id,
 		bot:           bot,
 		queue:         queue,
-		exchange:      exchange,
 		baseCurrency:  baseCurr,
 		quoteCurrency: quoteCurr,
 		interval:      interval,
+		apikey:        apikey,
+		apisecret:     apisecret,
 	}
 	_, err := s.GetAgent(id)
 	if err == nil {
@@ -115,6 +127,7 @@ func (s *AgentsService) Delete(id string) {
 		return
 	}
 	delete(s.agents, id)
+	s.logger.Println("deleted bot:", id)
 }
 
 func (s *AgentsService) stopAndDeleteAgent(id string) error {
@@ -122,7 +135,9 @@ func (s *AgentsService) stopAndDeleteAgent(id string) error {
 	if err != nil {
 		return err
 	}
-	ag.cancel()
+	if ag.ctx != nil {
+		ag.cancel()
+	}
 	s.Delete(id)
 	return nil
 }
@@ -153,16 +168,15 @@ func (s *AgentsService) RunAgent(id string) error {
 	go func() {
 
 		tradeCtx, cancel := context.WithCancel(context.Background())
-		// for fake exchange, we need
-		go ex.Update(tradeCtx, ag.exchange)
 
 		go ag.bot.StartSM(tradeCtx, msgChan)
 		go Autotrade(
 			tradeCtx,
 			fmt.Sprintf("%s-%s", ag.baseCurrency, ag.quoteCurrency),
 			ag.interval,
+			ag.bot.exCtx,
 			ag.bot.queue,
-			ag.exchange,
+			ag.bot.exchange,
 		)
 
 		for {

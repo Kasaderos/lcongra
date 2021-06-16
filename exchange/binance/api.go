@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/url"
 	"strconv"
+	"sync"
 	"time"
 
 	"github.com/kasaderos/lcongra/exchange"
@@ -30,23 +31,50 @@ var (
 	ApiExchangeInfo = fmt.Sprintf("%s/api/v3/exchangeInfo", Endpoint)
 )
 
-type binance struct {
-	Name      string
-	logger    *log.Logger
-	ApiKey    string
-	ApiSecret string
+const (
+	MaxRequestsPerMin = 1200
+)
+
+type ExchangeMutex struct {
+	mu        sync.Mutex
+	lastReset time.Time
+	count     int
 }
 
-func NewExchange(logger *log.Logger, apikey, apisecret string) exchange.Exchanger {
-	return &binance{
-		Name:      "binance",
-		logger:    logger,
-		ApiKey:    apikey,
-		ApiSecret: apisecret,
+func (mx *ExchangeMutex) Lock() {
+	mx.mu.Lock()
+	mx.count++
+	if mx.count >= MaxRequestsPerMin {
+		log.Println("[binance] max requests reached")
 	}
 }
 
-func (ex *binance) PairFormat(pair string) string {
+func (mx *ExchangeMutex) Unlock() {
+	now := time.Now()
+	if now.Sub(mx.lastReset) > time.Minute {
+		mx.count = 0
+		mx.lastReset = now
+	}
+	mx.mu.Unlock()
+}
+
+type binance struct {
+	Name   string
+	logger *log.Logger
+	mx     ExchangeMutex
+}
+
+func NewExchange(logger *log.Logger) exchange.Exchanger {
+	return &binance{
+		Name:   "binance",
+		logger: logger,
+		mx: ExchangeMutex{
+			lastReset: time.Now(),
+		},
+	}
+}
+
+func (ex *binance) PairFormat(ctx context.Context, pair string) string {
 	b, q := exchange.Currencies(pair)
 	return b + q
 }
@@ -63,7 +91,12 @@ func (ex *binance) Ping(ctx context.Context) error {
 	return nil
 }
 
-func (ex *binance) GetRate(pair string) (rate float64, err error) {
+func (ex *binance) GetRate(ctx context.Context, pair string) (rate float64, err error) {
+	ex.mx.Lock()
+	defer ex.mx.Unlock()
+
+	pair = ex.PairFormat(ctx, pair)
+
 	query := url.Values{}
 	query.Add("symbol", pair)
 	query.Add("limit", "100")
@@ -122,7 +155,16 @@ func (ex *binance) GetRate(pair string) (rate float64, err error) {
 	return rate, nil
 }
 
-func (ex *binance) CreateOrder(order *exchange.Order) (id string, err error) {
+func (ex *binance) CreateOrder(ctx context.Context, order *exchange.Order) (id string, err error) {
+	ex.mx.Lock()
+	defer ex.mx.Unlock()
+
+	order.Pair = ex.PairFormat(ctx, order.Pair)
+	keys, ok := ctx.Value("keys").(map[string]string)
+	if !ok {
+		return "", exchange.ErrKeysNotFound
+	}
+
 	timestamp := strconv.FormatInt(time.Now().Unix()*1000, 10)
 	query := url.Values{}
 	query.Add("symbol", order.Pair)
@@ -138,13 +180,13 @@ func (ex *binance) CreateOrder(order *exchange.Order) (id string, err error) {
 
 	signature := string(hmac.SHA256(
 		[]byte(query.Encode()),
-		[]byte(ex.ApiSecret)),
-	)
+		[]byte(keys["apisecret"]),
+	))
 
 	query.Set("signature", signature)
 
 	header := http.Header{
-		"X-MBX-APIKEY": []string{ex.ApiKey},
+		"X-MBX-APIKEY": []string{keys["apikey"]},
 	}
 
 	resp, err := httpf.Post(ApiNewOrder, header, query, "")
@@ -165,7 +207,15 @@ func (ex *binance) CreateOrder(order *exchange.Order) (id string, err error) {
 	return orderID, nil
 }
 
-func (ex *binance) GetBalance(currency string) (amount float64, err error) {
+func (ex *binance) GetBalance(ctx context.Context, currency string) (amount float64, err error) {
+	ex.mx.Lock()
+	defer ex.mx.Unlock()
+
+	//pair = ex.PairFormat(ctx, pair)
+	keys, ok := ctx.Value("keys").(map[string]string)
+	if !ok {
+		return 0.0, exchange.ErrKeysNotFound
+	}
 	// time now in milliseconds
 	timestamp := strconv.FormatInt(time.Now().Unix()*1000, 10)
 	query := url.Values{}
@@ -174,13 +224,13 @@ func (ex *binance) GetBalance(currency string) (amount float64, err error) {
 
 	signature := string(hmac.SHA256(
 		[]byte(query.Encode()),
-		[]byte(ex.ApiSecret)),
+		[]byte(keys["apisecret"])),
 	)
 
 	query.Set("signature", signature)
 
 	header := http.Header{}
-	header.Add("X-MBX-APIKEY", ex.ApiKey)
+	header.Add("X-MBX-APIKEY", keys["apikey"])
 	body, err := httpf.Get(ApiBalance, query, header)
 	if err != nil {
 		return -1, err
@@ -203,7 +253,16 @@ func (ex *binance) GetBalance(currency string) (amount float64, err error) {
 	return -1, exchange.ErrNotFound
 }
 
-func (ex *binance) OpenedOrders(pair string) ([]exchange.Order, error) {
+func (ex *binance) OpenedOrders(ctx context.Context, pair string) (orders []exchange.Order, err error) {
+	ex.mx.Lock()
+	defer ex.mx.Unlock()
+
+	pair = ex.PairFormat(ctx, pair)
+	keys, ok := ctx.Value("keys").(map[string]string)
+	if !ok {
+		return nil, exchange.ErrKeysNotFound
+	}
+
 	timestamp := strconv.FormatInt(time.Now().Unix()*1000, 10)
 	query := url.Values{}
 	query.Add("recvWindow", "5000")
@@ -212,13 +271,13 @@ func (ex *binance) OpenedOrders(pair string) ([]exchange.Order, error) {
 
 	signature := string(hmac.SHA256(
 		[]byte(query.Encode()),
-		[]byte(ex.ApiSecret)),
+		[]byte(keys["apisecret"])),
 	)
 
 	query.Set("signature", signature)
 
 	header := http.Header{}
-	header.Add("X-MBX-APIKEY", ex.ApiKey)
+	header.Add("X-MBX-APIKEY", keys["apikey"])
 	body, err := httpf.Get(ApiOpenOrders, query, header)
 	if err != nil {
 		return nil, err
@@ -229,7 +288,7 @@ func (ex *binance) OpenedOrders(pair string) ([]exchange.Order, error) {
 		return nil, err
 	}
 	// TODO validate
-	orders := make([]exchange.Order, 0, len(ordersResp))
+	orders = make([]exchange.Order, 0, len(ordersResp))
 	for _, d := range ordersResp {
 		orders = append(orders, exchange.Order{
 			ID: d.ClientOrderID,
@@ -240,6 +299,15 @@ func (ex *binance) OpenedOrders(pair string) ([]exchange.Order, error) {
 }
 
 func (ex *binance) CancelOrder(ctx context.Context, pair string, orderID string) (err error) {
+	ex.mx.Lock()
+	defer ex.mx.Unlock()
+
+	pair = ex.PairFormat(ctx, pair)
+	keys, ok := ctx.Value("keys").(map[string]string)
+	if !ok {
+		return exchange.ErrKeysNotFound
+	}
+
 	timestamp := strconv.FormatInt(time.Now().Unix()*1000, 10)
 	query := url.Values{}
 	query.Add("recvWindow", "5000")
@@ -249,13 +317,13 @@ func (ex *binance) CancelOrder(ctx context.Context, pair string, orderID string)
 
 	signature := string(hmac.SHA256(
 		[]byte(query.Encode()),
-		[]byte(ex.ApiSecret)),
+		[]byte(keys["apisecret"])),
 	)
 
 	query.Set("signature", signature)
 
 	header := http.Header{}
-	header.Add("X-MBX-APIKEY", ex.ApiKey)
+	header.Add("X-MBX-APIKEY", keys["apikey"])
 	body, err := httpf.Delete(ApiCancelOrder, header, query, "")
 	if err != nil {
 		return err
@@ -277,7 +345,10 @@ func (ex *binance) CancelOrder(ctx context.Context, pair string, orderID string)
 }
 
 func (ex *binance) GetInformation(ctx context.Context, pair string) (info *exchange.Information, err error) {
-	pairFormated := ex.PairFormat(pair)
+	ex.mx.Lock()
+	defer ex.mx.Unlock()
+
+	pairFormated := ex.PairFormat(ctx, pair)
 	body, err := httpf.Get(ApiExchangeInfo, nil, nil)
 	if err != nil {
 		return nil, err
@@ -318,7 +389,7 @@ func (ex *binance) GetInformation(ctx context.Context, pair string) (info *excha
 	}
 
 	_, quoated := exchange.Currencies(pair)
-	amount, err := ex.GetBalance(quoated)
+	amount, err := ex.GetBalance(ctx, quoated)
 	if err != nil {
 		return nil, err
 	}

@@ -101,6 +101,12 @@ func (h *AgentServiceHandler) runBot(req *RequestParams, w http.ResponseWriter) 
 }
 
 func (h *AgentServiceHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if err := recover(); err != nil {
+			h.srv.logger.Println(err)
+			return
+		}
+	}()
 	params, err := getParams(r)
 	if err != nil {
 		h.srv.logger.Println("server: json:", err)

@@ -118,11 +118,13 @@ func runBot(botID string) {
 	data, err := json.Marshal(newBot)
 	if err != nil {
 		log.Println(err)
+		return
 	}
 
 	req, err := http.NewRequest("POST", runBotURL, bytes.NewBuffer(data))
 	if err != nil {
 		log.Println(err)
+		return
 	}
 
 	resp, err := http.DefaultClient.Do(req)
@@ -142,16 +144,19 @@ func stopBot(botID string) {
 	data, err := json.Marshal(newBot)
 	if err != nil {
 		log.Println(err)
+		return
 	}
 
 	req, err := http.NewRequest("POST", stopBotURL, bytes.NewBuffer(data))
 	if err != nil {
 		log.Println(err)
+		return
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Println(err)
+		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
@@ -165,16 +170,19 @@ func deleteBot(botID string) {
 	data, err := json.Marshal(newBot)
 	if err != nil {
 		log.Println(err)
+		return
 	}
 
 	req, err := http.NewRequest("POST", deleteBotURL, bytes.NewBuffer(data))
 	if err != nil {
 		log.Println(err)
+		return
 	}
 
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		log.Println(err)
+		return
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {

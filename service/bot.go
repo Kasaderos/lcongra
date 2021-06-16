@@ -18,6 +18,11 @@ const (
 	CheckOrder
 	WaitOrder
 	Nothing
+	CancelOrder
+)
+
+const (
+	AttemptsNumber = 3
 )
 
 var states = []string{"Start", "PopOrder", "CreateOrder", "CheckOrder", "WaitOrder", "Nothing"}
@@ -38,14 +43,17 @@ type Bot struct {
 	queue    *OrderQueue
 	exchange exchange.Exchanger
 	logger   *log.Logger
+
+	exCtx context.Context
 }
 
-func NewBot(queue *OrderQueue, ex exchange.Exchanger, logger *log.Logger, pair string) *Bot {
+func NewBot(queue *OrderQueue, ex exchange.Exchanger, logger *log.Logger, pair string, exCtx context.Context) *Bot {
 	return &Bot{
 		queue:    queue,
 		exchange: ex,
 		logger:   logger,
 		pair:     pair,
+		exCtx:    exCtx,
 	}
 }
 
@@ -63,17 +71,17 @@ func (b *Bot) SetState(s State) {
 
 func (b *Bot) GetCache() float64 {
 	base, quote := exchange.Currencies(b.pair)
-	baseAmount, err := b.exchange.GetBalance(base)
+	baseAmount, err := b.exchange.GetBalance(b.exCtx, base)
 	if err != nil {
 		b.logger.Println(err)
 		return 0.0
 	}
-	quoteAmount, err := b.exchange.GetBalance(quote)
+	quoteAmount, err := b.exchange.GetBalance(b.exCtx, quote)
 	if err != nil {
 		b.logger.Println(err)
 		return 0.0
 	}
-	price, err := b.exchange.GetRate(b.pair)
+	price, err := b.exchange.GetRate(b.exCtx, b.pair)
 	if err != nil {
 		b.logger.Println(err)
 		return 0.0
@@ -124,7 +132,7 @@ SM:
 
 			// if sell expired then we sell by current price
 			if currentOrder.Side == "SELL" && now.After(currentOrder.OrderTime) {
-				currentPrice, err := b.exchange.GetRate(currentOrder.Pair)
+				currentPrice, err := b.exchange.GetRate(b.exCtx, currentOrder.Pair)
 				if err != nil {
 					b.logger.Println("close expired position failed", err)
 					continue
@@ -147,8 +155,8 @@ SM:
 				id  string
 				err error
 			)
-			for attempts := 0; attempts < 3; attempts++ {
-				id, err = b.exchange.CreateOrder(&currentOrder)
+			for attempts := 0; attempts < AttemptsNumber; attempts++ {
+				id, err = b.exchange.CreateOrder(b.exCtx, &currentOrder)
 				currentOrder.ID = id
 				if err == nil {
 					break
@@ -171,8 +179,8 @@ SM:
 				orders []exchange.Order
 				err    error
 			)
-			for attempts := 0; attempts < 3; attempts++ {
-				orders, err = b.exchange.OpenedOrders(currentOrder.Pair)
+			for attempts := 0; attempts < AttemptsNumber; attempts++ {
+				orders, err = b.exchange.OpenedOrders(b.exCtx, currentOrder.Pair)
 				if err == nil {
 					break
 				} else {
@@ -180,8 +188,9 @@ SM:
 				}
 			}
 			if err != nil {
-				ctx.Done()
-				return
+				b.logger.Println("can't check order")
+				time.Sleep(5 * time.Second)
+				continue
 			}
 			exist := false
 			for _, order := range orders {
@@ -198,8 +207,8 @@ SM:
 				orders []exchange.Order
 				err    error
 			)
-			for attempts := 0; attempts < 3; attempts++ {
-				orders, err = b.exchange.OpenedOrders(currentOrder.Pair)
+			for attempts := 0; attempts < AttemptsNumber; attempts++ {
+				orders, err = b.exchange.OpenedOrders(b.exCtx, currentOrder.Pair)
 				if err != nil {
 					b.logger.Println(err)
 					continue
@@ -215,7 +224,10 @@ SM:
 				b.logger.Printf("order finished %+v\n", currentOrder)
 				continue
 			}
+
 			time.Sleep(5 * time.Second)
+		case CancelOrder:
+			// TODO
 		case Nothing:
 			time.Sleep(10 * time.Second)
 		}
