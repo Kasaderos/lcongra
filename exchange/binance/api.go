@@ -76,6 +76,9 @@ func NewExchange(logger *log.Logger) exchange.Exchanger {
 
 func (ex *binance) PairFormat(ctx context.Context, pair string) string {
 	b, q := exchange.Currencies(pair)
+	if b == "" || q == "" {
+		return pair
+	}
 	return b + q
 }
 
@@ -159,7 +162,7 @@ func (ex *binance) CreateOrder(ctx context.Context, order *exchange.Order) (id s
 	ex.mx.Lock()
 	defer ex.mx.Unlock()
 
-	order.Pair = ex.PairFormat(ctx, order.Pair)
+	pair := ex.PairFormat(ctx, order.Pair)
 	keys, ok := ctx.Value("keys").(map[string]string)
 	if !ok {
 		return "", exchange.ErrKeysNotFound
@@ -167,7 +170,7 @@ func (ex *binance) CreateOrder(ctx context.Context, order *exchange.Order) (id s
 
 	timestamp := strconv.FormatInt(time.Now().Unix()*1000, 10)
 	query := url.Values{}
-	query.Add("symbol", order.Pair)
+	query.Add("symbol", pair)
 	query.Add("side", order.Side)
 	query.Add("type", order.Type)
 	query.Add("timeInForce", "GTC")
@@ -346,13 +349,13 @@ func (ex *binance) CancelOrder(ctx context.Context, pair string, orderID string)
 
 func (ex *binance) GetInformation(ctx context.Context, pair string) (info *exchange.Information, err error) {
 	ex.mx.Lock()
-	defer ex.mx.Unlock()
-
 	pairFormated := ex.PairFormat(ctx, pair)
 	body, err := httpf.Get(ApiExchangeInfo, nil, nil)
 	if err != nil {
 		return nil, err
 	}
+	ex.mx.Unlock()
+
 	var exchInfo ExchangeInfoResponse
 	err = json.Unmarshal(body, &exchInfo)
 	if err != nil {
@@ -395,6 +398,7 @@ func (ex *binance) GetInformation(ctx context.Context, pair string) (info *excha
 	}
 	info.FreeQuotedCurrency = amount
 	info.CanTrade = true
+	info.MinSum = 11
 	ex.logger.Println("currency", quoated, "free", amount)
 	return info, nil
 }

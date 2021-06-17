@@ -78,25 +78,24 @@ y <- predict(rfManyReg, pr)
 
 #print(data_ex[N+1,2])
 #print(y)
-tss <- ts
 #N <- p
 for (i in 1:p){
-    x_t <- tss[(N-p+1):(N)]
+    x_t <- ts[(N-p+1):(N)]
     pr <- data.frame(t(rev(x_t)))
     colnames(pr) <- colnames(df)[2:dim(df)[2]]
     y <- predict(rfManyReg, pr)
-    tss <- c(tss, y)
+    ts <- c(ts, y)
     N <- N+1
 }
 #png(file=paste0(symbol, ".png")
-matplot(data.frame(tss, c(data_ex[,2], rep(NA, p))), type = "l", col = c('green', 'red'),
+matplot(data.frame(ts, c(data_ex[,2], rep(NA, p))), type = "l", col = c('green', 'red'),
         ylab="price", xlab="time")
 abline(v=N-p, col='red')
 #print(paste("p =",p, "success"))
 max_price <- max(ts[(length(ts)-p):length(ts)])
 min_price <- min(ts[(length(ts)-p):length(ts)])
 
-price <- ts[length(ts)-p]
+price <- ts[length(ts)-p+1]
 eps <- price * 0.003
 if (price < min_price + eps && price < max_price - eps){ # && price - eps < min_price) {
     cat(paste("1", price, min_price, max_price))

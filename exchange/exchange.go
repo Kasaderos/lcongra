@@ -38,6 +38,7 @@ type Exchanger interface {
 	PairFormat(ctx context.Context, pair string) (expair string)
 	GetBalance(ctx context.Context, currency string) (amount float64, err error)
 	GetInformation(ctx context.Context, pair string) (info *Information, err error)
+	CancelOrder(ctx context.Context, pair string, orderID string) (err error)
 }
 
 func GetPrecision(f float64) int {
@@ -58,6 +59,7 @@ type Information struct {
 	FreeQuotedCurrency float64 // balance
 	QuotePrecision     int
 	PricePrecision     int
+	MinSum             int
 }
 
 type Orderbook struct {
@@ -73,6 +75,9 @@ func NewOrderbook(asks, bids []Order) *Orderbook {
 
 func Currencies(pair string) (base string, quoated string) {
 	currs := strings.Split(pair, "-")
+	if len(currs) != 2 {
+		return "", ""
+	}
 	return currs[0], currs[1]
 }
 

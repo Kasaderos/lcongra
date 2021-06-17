@@ -26,12 +26,12 @@ func getDirection(pair string, interval string) Direction {
 	cmd := exec.Command(app, "--vanilla", "../../scripts/la1_rf.R", interval, pair)
 
 	output, err := cmd.Output()
+	res := string(output)
+	log.Println(res)
 	if err != nil {
 		log.Println("os exec output", err)
 		return Stay
 	}
-	res := string(output)
-	log.Println(res)
 	dir := strings.Split(res, " ")
 	if len(dir) == 0 {
 		return Stay
@@ -55,6 +55,7 @@ func Autotrade(
 	ex exchange.Exchanger,
 ) {
 	logger := log.New(os.Stdout, "[autotrade] ", log.Default().Flags())
+
 	var sleepDuration time.Duration
 	switch interval {
 	case "3m":
@@ -68,9 +69,10 @@ func Autotrade(
 		logger.Println("[autotrade] ", err)
 		return
 	}
-
+	pairFormatted := ex.PairFormat(context.Background(), pair)
 	minAmount := 11.0
 	fixedAmount := minAmount
+	logger.Println("started")
 	for {
 		select {
 		case <-ctx.Done():
@@ -85,7 +87,7 @@ func Autotrade(
 				continue
 			}
 		}
-		dir := getDirection(pair, interval)
+		dir := getDirection(pairFormatted, interval)
 		logger.Println("dir", dir)
 		if dir == Up {
 			rate, err := ex.GetRate(exCtx, pair)
@@ -96,7 +98,7 @@ func Autotrade(
 			eps := rate * 0.0005
 			buyOrder := exchange.Order{
 				PushedTime: time.Now(),
-				OrderTime:  time.Now().Add(10 * time.Second),
+				OrderTime:  time.Now().Add(30 * time.Second),
 				Pair:       pair,
 				Type:       "LIMIT", // todo get from exchange
 				Side:       "BUY",
@@ -114,7 +116,7 @@ func Autotrade(
 				Type:       "LIMIT", // todo get from exchange
 				Side:       "SELL",
 				Price:      round(rate+eps, info.PricePrecision),
-				Amount:     round(buyOrder.Amount-1e-6, info.QuotePrecision),
+				Amount:     round(buyOrder.Amount, info.QuotePrecision),
 			}
 			log.Printf("order pushed %+v", order)
 			queue.Push(order)

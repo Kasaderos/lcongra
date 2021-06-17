@@ -107,12 +107,13 @@ func (s *AgentsService) GetListInfo() []AgentInfo {
 	defer s.RUnlock()
 	agents := make([]AgentInfo, 0, len(s.agents))
 	for _, agent := range s.agents {
+		_, _, all := agent.bot.GetCache()
 		agents = append(agents, AgentInfo{
 			ID:       agent.ID,
 			Pair:     agent.baseCurrency + "-" + agent.quoteCurrency,
 			Interval: agent.interval,
 			State:    agent.bot.GetState().String(),
-			Cache:    agent.bot.GetCache(),
+			Cache:    all,
 		})
 	}
 	return agents
