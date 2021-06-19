@@ -160,8 +160,8 @@ SM:
 				id  string
 				err error
 			)
-			base, _, _ := b.GetCache()
-			if currentOrder.Side == "BUY" && base < MinSum {
+			_, quote, _ := b.GetCache()
+			if currentOrder.Side == "BUY" && quote < MinSum {
 				b.logger.Println("not enough money in balance")
 				b.SetState(Nothing)
 				continue

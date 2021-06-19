@@ -61,7 +61,7 @@ func Autotrade(
 	case "3m":
 		sleepDuration = time.Minute * 3
 	case "1m":
-		sleepDuration = time.Second * 20
+		sleepDuration = time.Minute
 	}
 
 	info, err := ex.GetInformation(exCtx, pair)
