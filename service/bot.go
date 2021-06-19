@@ -13,13 +13,14 @@ type State int
 
 const (
 	Start State = iota
-	PopOrder
+	GetSignal
 	CreateOrder
 	CheckOrder
 	WaitOrder
 	Nothing
 	CancelOrder
-	ClosePositions
+	OpenPosition
+	ClosePosition
 )
 
 const (
@@ -43,16 +44,16 @@ type Bot struct {
 	count    int
 	interval time.Duration
 
-	queue    *OrderQueue
-	exchange exchange.Exchanger
-	logger   *log.Logger
-
-	exCtx context.Context
+	exchange   exchange.Exchanger
+	logger     *log.Logger
+	info       *exchange.Information
+	lastSignal Signal
+	exCtx      context.Context
 }
 
-func NewBot(queue *OrderQueue, ex exchange.Exchanger, logger *log.Logger, pair string, exCtx context.Context) *Bot {
+func NewBot(ex exchange.Exchanger, logger *log.Logger, pair string, exCtx context.Context) *Bot {
+
 	return &Bot{
-		queue:    queue,
 		exchange: ex,
 		logger:   logger,
 		pair:     pair,
@@ -96,9 +97,18 @@ func (b *Bot) GetCache() (baseSum float64, quoteSum float64, all float64) {
 	return baseSum, quoteAmount, b.cache
 }
 
-func (b *Bot) StartSM(ctx context.Context, msgChan <-chan string) {
+/*
+			v---------------------------------------------------------------------------------------
+	Start -> GetSignal |                                                                                    |
+			    -> OpenPosition -> CreateOrder -> CheckOrder |                                      |
+			    					          -> ClosePosition -> CreateOrder -> CheckOrder
+
+*/
+func (b *Bot) StartSM(ctx context.Context, msgChan <-chan string, signalChannel <-chan Signal) {
 	b.SetState(Start)
-	var currentOrder exchange.Order
+
+	var currentOrder *exchange.Order
+	var err error
 	b.logger.Println("SM started")
 SM:
 	for {
@@ -117,49 +127,34 @@ SM:
 
 		switch b.state {
 		case Start:
-			b.state = PopOrder
+			info, err := b.exchange.GetInformation(b.exCtx, b.pair)
+			if err != nil {
+				b.logger.Println(err)
+				return
+			}
+			b.info = info
+			b.state = GetSignal
 
-		case PopOrder:
-			b.logger.Println("state", b.state)
-			if b.queue.Empty() {
-				// b.logger.Println("queue empty")
-				time.Sleep(time.Second * 10)
+		case GetSignal:
+			select {
+			case b.lastSignal = <-signalChannel:
+
+				b.SetState(OpenPosition)
+			default:
+			}
+		case OpenPosition:
+			currentOrder, err = b.createBuyOrder()
+			if err != nil {
+				b.logger.Println(err)
 				continue
 			}
-			now := time.Now()
-			currentOrder = b.queue.Front()
-			// if open position expired we decline creating order
-			if currentOrder.Side == "BUY" && now.After(currentOrder.OrderTime) {
-				b.logger.Println("BUY order time after now")
-				b.queue.Pop()
-				continue
-			}
-
-			// if sell expired then we sell by current price
-			if currentOrder.Side == "SELL" && now.After(currentOrder.OrderTime) {
-				currentPrice, err := b.exchange.GetRate(b.exCtx, currentOrder.Pair)
-				if err != nil {
-					b.logger.Println("close expired position failed", err)
-					continue
-				}
-				b.logger.Println("SELL order time after now")
-				currentOrder.Price = currentPrice
-			}
-
-			if !currentOrder.OrderTime.IsZero() && currentOrder.OrderTime.Before(now) {
-				b.logger.Println("order time befor now, sleep")
-				time.Sleep(now.Sub(currentOrder.OrderTime))
-			}
-
-			// b.logger.Printf("got order %+v\n", currentOrder)
 			b.SetState(CreateOrder)
-
+		case ClosePosition:
+			currentOrder = b.createSellOrder(currentOrder.Price, currentOrder.Amount)
+			b.SetState(CreateOrder)
 		case CreateOrder:
 			b.logger.Println("state", b.state)
-			var (
-				id  string
-				err error
-			)
+			var id string
 			_, quote, _ := b.GetCache()
 			if currentOrder.Side == "BUY" && quote < MinSum {
 				b.logger.Println("not enough money in balance")
@@ -167,7 +162,7 @@ SM:
 				continue
 			}
 			for attempts := 0; attempts < AttemptsNumber; attempts++ {
-				id, err = b.exchange.CreateOrder(b.exCtx, &currentOrder)
+				id, err = b.exchange.CreateOrder(b.exCtx, currentOrder)
 				currentOrder.ID = id
 				if err == nil {
 					break
@@ -176,7 +171,7 @@ SM:
 				}
 			}
 			if err != nil {
-				b.SetState(ClosePositions)
+				b.SetState(GetSignal)
 				b.logger.Println("can't create order", err)
 				continue
 			}
@@ -211,67 +206,65 @@ SM:
 				}
 			}
 			if exist {
-				b.SetState(WaitOrder)
-			}
-		case WaitOrder:
-			// b.logger.Println("state", b.state)
-			var (
-				orders []exchange.Order
-				err    error
-			)
-			for attempts := 0; attempts < AttemptsNumber; attempts++ {
-				orders, err = b.exchange.OpenedOrders(b.exCtx, currentOrder.Pair)
-				if err != nil {
-					b.logger.Println(err)
-					continue
+				b.logger.Println("order exist", currentOrder.ID, currentOrder.Side)
+				time.Sleep(5 * time.Second)
+			} else {
+				if currentOrder.Side == "BUY" {
+					b.SetState(ClosePosition)
+				} else {
+					b.SetState(GetSignal)
 				}
-			}
-			if err != nil {
-				ctx.Done()
-				return
-			}
-
-			if currentOrder.Side == "BUY" && time.Now().Sub(currentOrder.OrderTime) > b.interval/2 {
-				b.logger.Println("order not completed: side=buy")
-				b.SetState(CancelOrder)
-				continue
-			}
-
-			if currentOrder.Side == "BUY" && time.Now().Sub(currentOrder.OrderTime) > b.interval/2 {
-				b.logger.Println("order not created: side=buy")
-				b.SetState(CancelOrder)
-				continue
-			}
-			if len(orders) == 0 {
-				b.queue.Pop()
-				b.SetState(PopOrder)
 				b.logger.Printf("order finished %+v\n", currentOrder)
 				continue
 			}
 
-			time.Sleep(5 * time.Second)
-		case CancelOrder:
-			// cancel BUY, and next SELL
-			rate, _ := b.exchange.GetRate(b.exCtx, b.pair)
-			if rate > 1e-3 {
-				err := b.exchange.CancelOrder(b.exCtx, currentOrder.Pair, currentOrder.ID)
-				if err != nil {
-					b.logger.Println(err)
-					b.SetState(PopOrder)
-					continue
-				}
-				b.logger.Println("order cancelled:", currentOrder.ID)
-				// pop SELL order
-				if !b.queue.Empty() {
-					currentOrder = b.queue.Front()
-					if currentOrder.Side == "SELL" {
-						b.queue.Pop()
-					}
-					b.SetState(PopOrder)
-				}
+			if currentOrder.Side == "BUY" && time.Since(currentOrder.OrderTime) > b.interval {
+				b.logger.Println("order not completed: side=buy")
+				b.SetState(CancelOrder)
 			}
+
+		case CancelOrder:
+			err = b.exchange.CancelOrder(b.exCtx, currentOrder.Pair, currentOrder.ID)
+			if err != nil {
+				b.logger.Println(err)
+				b.SetState(GetSignal)
+				continue
+			}
+			b.logger.Println("order cancelled:", currentOrder.ID)
 		case Nothing:
 			time.Sleep(10 * time.Second)
 		}
 	}
+}
+
+func (b *Bot) createBuyOrder() (*exchange.Order, error) {
+	rate, err := b.exchange.GetRate(b.exCtx, b.pair)
+	if err != nil {
+		return nil, err
+	}
+	eps := rate * 0.0005
+	buyOrder := &exchange.Order{
+		PushedTime: time.Now(),
+		OrderTime:  time.Now().Add(30 * time.Second),
+		Pair:       b.pair,
+		Type:       "LIMIT", // todo get from exchange
+		Side:       "BUY",
+		Price:      round(rate+eps, b.info.PricePrecision),
+		Amount:     round(MinSum/(rate+eps), b.info.BasePrecision),
+	}
+	return buyOrder, nil
+}
+
+func (b *Bot) createSellOrder(boughtRate float64, boughtAmount float64) *exchange.Order {
+	eps := boughtRate * 0.003
+	order := &exchange.Order{
+		PushedTime: time.Now(),
+		OrderTime:  time.Now().Add(b.interval * 60), // todo OrderTime???
+		Pair:       b.pair,
+		Type:       "LIMIT", // todo get from exchange
+		Side:       "SELL",
+		Price:      round(boughtRate+eps, b.info.PricePrecision),
+		Amount:     round(boughtAmount, b.info.QuotePrecision),
+	}
+	return order
 }

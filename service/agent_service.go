@@ -53,10 +53,9 @@ func (s *AgentsService) Create(
 		},
 	)
 	// set keys when real exchange
-	queue := NewOrderQueue()
 	prefix := fmt.Sprintf("[%s] ", id)
 	logger := log.New(os.Stdout, prefix, log.Default().Flags())
-	bot := NewBot(queue, s.exchange, logger, baseCurr+"-"+quoteCurr, exCtx)
+	bot := NewBot(s.exchange, logger, baseCurr+"-"+quoteCurr, exCtx)
 
 	// s.AddQueue(id)
 
@@ -64,7 +63,6 @@ func (s *AgentsService) Create(
 		// MQ:            s.MQ,
 		ID:            id,
 		bot:           bot,
-		queue:         queue,
 		baseCurrency:  baseCurr,
 		quoteCurrency: quoteCurr,
 		interval:      interval,
@@ -169,15 +167,15 @@ func (s *AgentsService) RunAgent(id string) error {
 	go func() {
 
 		tradeCtx, cancel := context.WithCancel(context.Background())
+		signalCh := make(chan Signal, 1)
 
-		go ag.bot.StartSM(tradeCtx, msgChan)
+		go ag.bot.StartSM(tradeCtx, msgChan, signalCh)
 		go Autotrade(
 			tradeCtx,
 			fmt.Sprintf("%s-%s", ag.baseCurrency, ag.quoteCurrency),
 			ag.interval,
-			ag.bot.exCtx,
-			ag.bot.queue,
 			ag.bot.exchange,
+			signalCh,
 		)
 
 		for {
