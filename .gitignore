@@ -1,3 +1,4 @@
 *.pdf
 client/react-tutorial
 *.json
+build/*
