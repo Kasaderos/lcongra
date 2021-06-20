@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/kasaderos/lcongra/exchange"
 	ex "github.com/kasaderos/lcongra/exchange/binance"
@@ -55,7 +56,15 @@ func (s *AgentsService) Create(
 	// set keys when real exchange
 	prefix := fmt.Sprintf("[%s] ", id)
 	logger := log.New(os.Stdout, prefix, log.Default().Flags())
-	bot := NewBot(s.exchange, logger, baseCurr+"-"+quoteCurr, exCtx)
+
+	var dur time.Duration
+	switch interval {
+	case "1m":
+		dur = time.Minute
+	case "3m":
+		dur = 3 * time.Minute
+	}
+	bot := NewBot(s.exchange, logger, baseCurr+"-"+quoteCurr, exCtx, dur)
 
 	// s.AddQueue(id)
 

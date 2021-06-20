@@ -51,13 +51,14 @@ type Bot struct {
 	exCtx      context.Context
 }
 
-func NewBot(ex exchange.Exchanger, logger *log.Logger, pair string, exCtx context.Context) *Bot {
+func NewBot(ex exchange.Exchanger, logger *log.Logger, pair string, exCtx context.Context, interval time.Duration) *Bot {
 
 	return &Bot{
 		exchange: ex,
 		logger:   logger,
 		pair:     pair,
 		exCtx:    exCtx,
+		interval: interval,
 	}
 }
 
