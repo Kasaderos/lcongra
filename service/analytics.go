@@ -19,13 +19,16 @@ const (
 	Up   Direction = 1
 	Down Direction = -1
 )
+const (
+	app = "Rscript"
+)
 
 type Signal struct {
-	Dir Direction
+	Dir  Direction
+	Time time.Time
 }
 
 func getDirection(pair string, interval string) Direction {
-	app := "Rscript"
 	// TODO
 	cmd := exec.Command(app, "--vanilla", "../../scripts/la1_rf.R", interval, pair)
 
@@ -78,7 +81,7 @@ func Autotrade(
 
 		dir := getDirection(pairFormatted, interval)
 		select {
-		case signalChannel <- Signal{dir}:
+		case signalChannel <- Signal{dir, time.Now()}:
 		default:
 
 		}

@@ -28,7 +28,7 @@ const (
 	MinSum         = 11
 )
 
-var states = []string{"Start", "PopOrder", "CreateOrder", "CheckOrder", "WaitOrder", "Nothing"}
+var states = []string{"Start", "GetSignal", "CreateOrder", "CheckOrder", "WaitOrder", "Nothing", "CancelOrder", "OpenPosition", "ClosePosition"}
 
 func (s State) String() string {
 	return states[s]
@@ -77,17 +77,17 @@ func (b *Bot) GetCache() (baseSum float64, quoteSum float64, all float64) {
 	base, quote := exchange.Currencies(b.pair)
 	baseAmount, err := b.exchange.GetBalance(b.exCtx, base)
 	if err != nil {
-		b.logger.Println(err)
+		b.logger.Println("error: get base amount", err)
 		return 0.0, 0.0, 0.0
 	}
 	quoteAmount, err := b.exchange.GetBalance(b.exCtx, quote)
 	if err != nil {
-		b.logger.Println(err)
+		b.logger.Println("error: get quote amount", err)
 		return 0.0, 0.0, 0.0
 	}
 	price, err := b.exchange.GetRate(b.exCtx, b.pair)
 	if err != nil {
-		b.logger.Println(err)
+		b.logger.Println("balance: error: can't get rate", err)
 		return 0.0, 0.0, 0.0
 	}
 	b.ms.Lock()
@@ -112,25 +112,15 @@ func (b *Bot) StartSM(ctx context.Context, msgChan <-chan string, signalChannel 
 	b.logger.Println("SM started")
 SM:
 	for {
-		// b.logger.Println("state", b.state)
-		select {
-		case <-ctx.Done():
-			b.logger.Println("deleted")
-			break SM
-		case cmd := <-msgChan:
-			if cmd == CmdStop {
-				b.SetState(Nothing)
-				b.logger.Println("stopped")
-			}
-		default:
-		}
+		b.logger.Println("state", b.state)
 
 		switch b.state {
 		case Start:
 			info, err := b.exchange.GetInformation(b.exCtx, b.pair)
 			if err != nil {
-				b.logger.Println(err)
-				return
+				b.logger.Println("can't get info", err)
+				time.Sleep(time.Second * 5)
+				continue
 			}
 			b.info = info
 			b.state = GetSignal
@@ -138,9 +128,12 @@ SM:
 		case GetSignal:
 			select {
 			case b.lastSignal = <-signalChannel:
-
-				b.SetState(OpenPosition)
-			default:
+				if b.lastSignal.Dir == Up && time.Since(b.lastSignal.Time) < time.Second*5 {
+					b.SetState(OpenPosition)
+				}
+			case <-ctx.Done():
+				b.logger.Println("deleted")
+				break SM
 			}
 		case OpenPosition:
 			currentOrder, err = b.createBuyOrder()
@@ -153,7 +146,6 @@ SM:
 			currentOrder = b.createSellOrder(currentOrder.Price, currentOrder.Amount)
 			b.SetState(CreateOrder)
 		case CreateOrder:
-			b.logger.Println("state", b.state)
 			var id string
 			_, quote, _ := b.GetCache()
 			if currentOrder.Side == "BUY" && quote < MinSum {
@@ -172,7 +164,7 @@ SM:
 			}
 			if err != nil {
 				b.SetState(GetSignal)
-				b.logger.Println("can't create order", err)
+				b.logger.Println("can't create order", err, currentOrder)
 				continue
 			}
 
@@ -180,7 +172,6 @@ SM:
 			b.SetState(CheckOrder)
 
 		case CheckOrder:
-			b.logger.Println("state", b.state)
 			var (
 				orders []exchange.Order
 				err    error
@@ -206,8 +197,12 @@ SM:
 				}
 			}
 			if exist {
-				b.logger.Println("order exist", currentOrder.ID, currentOrder.Side)
-				time.Sleep(5 * time.Second)
+				b.logger.Println("order exist", currentOrder.ID, currentOrder.Side, currentOrder.Price)
+				if currentOrder.Side == "BUY" {
+					time.Sleep(3 * time.Second)
+				} else {
+					time.Sleep(b.interval / 3)
+				}
 			} else {
 				if currentOrder.Side == "BUY" {
 					b.SetState(ClosePosition)
@@ -232,7 +227,8 @@ SM:
 			}
 			b.logger.Println("order cancelled:", currentOrder.ID)
 		case Nothing:
-			time.Sleep(10 * time.Second)
+			time.Sleep(b.interval * 10)
+			b.SetState(GetSignal)
 		}
 	}
 }
@@ -242,29 +238,29 @@ func (b *Bot) createBuyOrder() (*exchange.Order, error) {
 	if err != nil {
 		return nil, err
 	}
-	eps := rate * 0.0005
+	eps := 0.0
 	buyOrder := &exchange.Order{
-		PushedTime: time.Now(),
-		OrderTime:  time.Now().Add(30 * time.Second),
-		Pair:       b.pair,
-		Type:       "LIMIT", // todo get from exchange
-		Side:       "BUY",
-		Price:      round(rate+eps, b.info.PricePrecision),
-		Amount:     round(MinSum/(rate+eps), b.info.BasePrecision),
+		CreatedTime: time.Now(),
+		OrderTime:   time.Now().Add(30 * time.Second),
+		Pair:        b.pair,
+		Type:        "LIMIT", // todo get from exchange
+		Side:        "BUY",
+		Price:       round(rate+eps, b.info.PricePrecision),
+		Amount:      round(MinSum/(rate+eps), b.info.BasePrecision),
 	}
 	return buyOrder, nil
 }
 
 func (b *Bot) createSellOrder(boughtRate float64, boughtAmount float64) *exchange.Order {
-	eps := boughtRate * 0.003
+	eps := boughtRate * 0.0025
 	order := &exchange.Order{
-		PushedTime: time.Now(),
-		OrderTime:  time.Now().Add(b.interval * 60), // todo OrderTime???
-		Pair:       b.pair,
-		Type:       "LIMIT", // todo get from exchange
-		Side:       "SELL",
-		Price:      round(boughtRate+eps, b.info.PricePrecision),
-		Amount:     round(boughtAmount, b.info.QuotePrecision),
+		CreatedTime: time.Now(),
+		OrderTime:   time.Now().Add(b.interval * 60), // todo OrderTime???
+		Pair:        b.pair,
+		Type:        "LIMIT", // todo get from exchange
+		Side:        "SELL",
+		Price:       round(boughtRate+eps, b.info.PricePrecision),
+		Amount:      round(boughtAmount, b.info.BasePrecision),
 	}
 	return order
 }
