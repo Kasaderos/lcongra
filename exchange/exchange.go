@@ -19,14 +19,14 @@ var (
 )
 
 type Order struct {
-	ID         string
-	OrderTime  time.Time
-	PushedTime time.Time
-	Pair       string
-	Type       string
-	Side       string
-	Price      float64
-	Amount     float64
+	ID          string
+	OrderTime   time.Time
+	CreatedTime time.Time
+	Pair        string
+	Type        string
+	Side        string
+	Price       float64
+	Amount      float64
 }
 
 // pair format BTC-USDT
