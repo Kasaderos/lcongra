@@ -119,7 +119,7 @@ SM:
 			info, err := b.exchange.GetInformation(b.exCtx, b.pair)
 			if err != nil {
 				b.logger.Println("can't get info", err)
-				time.Sleep(time.Second * 5)
+				time.Sleep(time.Minute)
 				continue
 			}
 			b.info = info
