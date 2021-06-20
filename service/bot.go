@@ -79,17 +79,14 @@ func (b *Bot) GetCache() (baseSum float64, quoteSum float64, all float64) {
 	baseAmount, err := b.exchange.GetBalance(b.exCtx, base)
 	if err != nil {
 		b.logger.Println("error: get base amount", err)
-		return 0.0, 0.0, 0.0
 	}
 	quoteAmount, err := b.exchange.GetBalance(b.exCtx, quote)
 	if err != nil {
 		b.logger.Println("error: get quote amount", err)
-		return 0.0, 0.0, 0.0
 	}
 	price, err := b.exchange.GetRate(b.exCtx, b.pair)
 	if err != nil {
 		b.logger.Println("balance: error: can't get rate", err)
-		return 0.0, 0.0, 0.0
 	}
 	b.ms.Lock()
 	defer b.ms.Unlock()
