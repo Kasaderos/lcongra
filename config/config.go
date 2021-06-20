@@ -3,6 +3,8 @@ package config
 import (
 	"log"
 
+	"fmt"
+	"os"
 	"github.com/spf13/viper"
 )
 
@@ -23,7 +25,7 @@ type ApiKeys struct {
 
 func ReadConfig(confname string) *Configuration {
 	viper.SetConfigName("template")
-	viper.AddConfigPath(".")
+	viper.AddConfigPath(fmt.Sprintf("%s/config", os.Getenv("APPDIR")))
 	config := new(Configuration)
 
 	if err := viper.ReadInConfig(); err != nil {

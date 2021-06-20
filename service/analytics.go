@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"strings"
 	"time"
+	"fmt"
 
 	"github.com/kasaderos/lcongra/exchange"
 )
@@ -19,8 +20,9 @@ const (
 	Up   Direction = 1
 	Down Direction = -1
 )
-const (
+var (
 	app = "Rscript"
+	script = fmt.Sprintf("%s/scripts/la1_rf.R", os.Getenv("APPDIR"))
 )
 
 type Signal struct {
@@ -30,7 +32,7 @@ type Signal struct {
 
 func getDirection(pair string, interval string) Direction {
 	// TODO
-	cmd := exec.Command(app, "--vanilla", "../../scripts/la1_rf.R", interval, pair)
+	cmd := exec.Command(app, "--vanilla", script, interval, pair)
 
 	output, err := cmd.Output()
 	res := string(output)
