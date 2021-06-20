@@ -260,7 +260,7 @@ func (b *Bot) createSellOrder(boughtRate float64, boughtAmount float64) *exchang
 		Type:        "LIMIT", // todo get from exchange
 		Side:        "SELL",
 		Price:       round(boughtRate+eps, b.info.PricePrecision),
-		Amount:      round(boughtAmount, b.info.BasePrecision),
+		Amount:      round(boughtAmount*0.999, b.info.BasePrecision),
 	}
 	return order
 }
