@@ -52,6 +52,7 @@ func (mx *ExchangeMutex) Lock() {
 func (mx *ExchangeMutex) Unlock() {
 	now := time.Now()
 	if now.Sub(mx.lastReset) > time.Minute {
+		log.Println("[binance] requests per minute", mx.count)
 		mx.count = 0
 		mx.lastReset = now
 	}
