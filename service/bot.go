@@ -148,11 +148,15 @@ SM:
 			b.SetState(CreateOrder)
 		case CreateOrder:
 			var id string
-			_, quote, _ := b.GetCache()
+			base, quote, _ := b.GetCache()
 			if currentOrder.Side == "BUY" && quote < MinSum {
 				b.logger.Println("not enough money in balance")
 				b.SetState(Nothing)
 				continue
+			}
+			// TODO move to ClosePosition 
+			if currentOrder.Side == "SELL" {
+				currentOrder.Amount = roundDown(base, b.info.BasePrecision)
 			}
 			for attempts := 0; attempts < AttemptsNumber; attempts++ {
 				id, err = b.exchange.CreateOrder(b.exCtx, currentOrder)
@@ -165,7 +169,7 @@ SM:
 			}
 			if err != nil {
 				b.SetState(GetSignal)
-				b.logger.Println("can't create order", err, currentOrder)
+				b.logger.Printf("can't create order %+v, %+v", err, currentOrder)
 				continue
 			}
 
@@ -240,6 +244,7 @@ func (b *Bot) createBuyOrder() (*exchange.Order, error) {
 		return nil, err
 	}
 	eps := 0.0
+	// TODO add stop loss. When SELL order not created we need close position
 	buyOrder := &exchange.Order{
 		CreatedTime: time.Now(),
 		OrderTime:   time.Now().Add(30 * time.Second),

@@ -96,6 +96,11 @@ func round(f float64, n int) float64 {
 	return math.Round(f*base) / base
 }
 
+// 0.0003099 -> 0.000309
+func roundDown(f float64, n int) float64 {
+	base := math.Pow10(n)
+	return math.Trunc(f*base) / base
+}
 /*
 	or
 */
