@@ -149,13 +149,18 @@ SM:
 			b.SetState(CreateOrder)
 		case ClosePosition:
 			// bought currency let's sell
-			base, _, _ := b.GetCache()
-			if base < 1e-9 {
-				b.logger.Printf("not enough money in balance, base %v", base)
+			base, _ := exchange.Currencies(b.pair)
+			amount, err := b.exchange.GetBalance(b.exCtx, base)
+			if err != nil {
+				b.logger.Println(err)
+				continue
+			}
+			if amount < 1e-12 {
+				b.logger.Printf("not enough money in balance, base %v", amount)
 				b.SetState(Nothing)
 				continue
 			}
-			amount := roundDown(base, b.info.BasePrecision)
+			amount = roundDown(amount, b.info.BasePrecision)
 			currentOrder = b.createSellOrder(currentOrder.Price, amount)
 			b.SetState(CreateOrder)
 
@@ -273,10 +278,10 @@ func (b *Bot) createSellOrder(boughtRate float64, boughtAmount float64) *exchang
 		CreatedTime: time.Now(),
 		OrderTime:   time.Now().Add(b.interval * 60), // todo OrderTime???
 		Pair:        b.pair,
-		Type:        "STOP_LOSS", // todo get from exchange
+		Type:        "LIMIT", // todo get from exchange
 		Side:        "SELL",
 		Price:       round(boughtRate+eps, b.info.PricePrecision),
-		StopPrice:   round(boughtRate-2*eps, b.info.PricePrecision),
+		//StopPrice:   round(boughtRate-2*eps, b.info.PricePrecision),
 		Amount:      round(boughtAmount*0.999, b.info.BasePrecision),
 	}
 	return order
