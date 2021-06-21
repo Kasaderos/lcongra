@@ -180,7 +180,9 @@ func (ex *binance) CreateOrder(ctx context.Context, order *exchange.Order) (id s
 	// }
 	query.Add("timestamp", timestamp)
 	query.Add("price", strconv.FormatFloat(order.Price, 'f', -1, 64))
-	query.Add("stopPrice", strconv.FormatFloat(order.StopPrice, 'f', -1, 64))
+	if order.Side == "SELL" {
+		query.Add("stopPrice", strconv.FormatFloat(order.StopPrice, 'f', -1, 64))
+	}
 	query.Add("quantity", strconv.FormatFloat(order.Amount, 'f', -1, 64))
 
 	signature := string(hmac.SHA256(
