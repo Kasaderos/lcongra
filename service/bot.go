@@ -21,6 +21,7 @@ const (
 	CancelOrder
 	OpenPosition
 	ClosePosition
+	ClosePositionNow
 )
 
 const (
@@ -28,7 +29,7 @@ const (
 	MinSum         = 11
 )
 
-var states = []string{"Start", "GetSignal", "CreateOrder", "CheckOrder", "WaitOrder", "Nothing", "CancelOrder", "OpenPosition", "ClosePosition"}
+var states = []string{"Start", "GetSignal", "CreateOrder", "CheckOrder", "WaitOrder", "Nothing", "CancelOrder", "OpenPosition", "ClosePosition", "ClosePositionNow"}
 
 func (s State) String() string {
 	return states[s]
@@ -134,6 +135,12 @@ SM:
 				break SM
 			}
 		case OpenPosition:
+			_, quote, _ := b.GetCache()
+			if quote < MinSum {
+				b.logger.Printf("not enough money in balance quote %v", quote)
+				b.SetState(Nothing)
+				continue
+			}
 			currentOrder, err = b.createBuyOrder()
 			if err != nil {
 				b.logger.Println(err)
@@ -141,20 +148,19 @@ SM:
 			}
 			b.SetState(CreateOrder)
 		case ClosePosition:
-			currentOrder = b.createSellOrder(currentOrder.Price, currentOrder.Amount)
-			b.SetState(CreateOrder)
-		case CreateOrder:
-			var id string
-			base, quote, _ := b.GetCache()
-			if currentOrder.Side == "BUY" && quote < MinSum {
-				b.logger.Println("not enough money in balance")
+			// bought currency let's sell
+			base, _, _ := b.GetCache()
+			if base < 1e-9 {
+				b.logger.Printf("not enough money in balance, base %v", base)
 				b.SetState(Nothing)
 				continue
 			}
-			// TODO move to ClosePosition 
-			if currentOrder.Side == "SELL" {
-				currentOrder.Amount = roundDown(base, b.info.BasePrecision)
-			}
+			amount := roundDown(base, b.info.BasePrecision)
+			currentOrder = b.createSellOrder(currentOrder.Price, amount)
+			b.SetState(CreateOrder)
+
+		case CreateOrder:
+			var id string
 			for attempts := 0; attempts < AttemptsNumber; attempts++ {
 				id, err = b.exchange.CreateOrder(b.exCtx, currentOrder)
 				currentOrder.ID = id
@@ -198,14 +204,8 @@ SM:
 					exist = true
 				}
 			}
-			if exist {
-				b.logger.Println("order exist", currentOrder.ID, currentOrder.Side, currentOrder.Price)
-				if currentOrder.Side == "BUY" {
-					time.Sleep(3 * time.Second)
-				} else {
-					time.Sleep(b.interval / 3)
-				}
-			} else {
+
+			if !exist {
 				if currentOrder.Side == "BUY" {
 					b.SetState(ClosePosition)
 				} else {
@@ -214,19 +214,32 @@ SM:
 				b.logger.Printf("order finished %+v\n", currentOrder)
 				continue
 			}
+			b.logger.Println("order exist", currentOrder.ID, currentOrder.Side, currentOrder.Price)
 
-			if currentOrder.Side == "BUY" && time.Since(currentOrder.OrderTime) > b.interval {
-				b.logger.Println("order not completed: side=buy")
-				b.SetState(CancelOrder)
+			// check order time
+			if currentOrder.Side == "BUY" {
+				if time.Since(currentOrder.OrderTime) > b.interval {
+					b.logger.Println("order not completed: side=buy")
+					b.SetState(CancelOrder)
+				} else {
+					time.Sleep(3 * time.Second)
+				}
+			} else if currentOrder.Side == "SELL" {
+				if time.Since(currentOrder.OrderTime) > b.interval*20 {
+					b.logger.Println("order not completed: side=sell")
+					b.SetState(CancelOrder)
+				} else {
+					time.Sleep(b.interval / 3)
+				}
 			}
 
 		case CancelOrder:
 			err = b.exchange.CancelOrder(b.exCtx, currentOrder.Pair, currentOrder.ID)
 			if err != nil {
 				b.logger.Println(err)
-				b.SetState(GetSignal)
 				continue
 			}
+			b.SetState(GetSignal)
 			b.logger.Println("order cancelled:", currentOrder.ID)
 		case Nothing:
 			time.Sleep(b.interval * 10)
@@ -260,9 +273,10 @@ func (b *Bot) createSellOrder(boughtRate float64, boughtAmount float64) *exchang
 		CreatedTime: time.Now(),
 		OrderTime:   time.Now().Add(b.interval * 60), // todo OrderTime???
 		Pair:        b.pair,
-		Type:        "LIMIT", // todo get from exchange
+		Type:        "STOP_LOSS", // todo get from exchange
 		Side:        "SELL",
 		Price:       round(boughtRate+eps, b.info.PricePrecision),
+		StopPrice:   round(boughtRate-2*eps, b.info.PricePrecision),
 		Amount:      round(boughtAmount*0.999, b.info.BasePrecision),
 	}
 	return order

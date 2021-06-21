@@ -26,6 +26,7 @@ type Order struct {
 	Type        string
 	Side        string
 	Price       float64
+	StopPrice   float64
 	Amount      float64
 }
 
