@@ -5,6 +5,8 @@ import (
 	"log"
 	"sync"
 	"time"
+	"math"
+	"errors"
 
 	"github.com/kasaderos/lcongra/exchange"
 )
@@ -108,6 +110,7 @@ func (b *Bot) StartSM(ctx context.Context, msgChan <-chan string, signalChannel 
 
 	var currentOrder *exchange.Order
 	var err error
+	closed := true
 	b.logger.Println("SM started")
 SM:
 	for {
@@ -161,7 +164,15 @@ SM:
 				continue
 			}
 			amount = roundDown(amount, b.info.BasePrecision)
-			currentOrder = b.createSellOrder(currentOrder.Price, amount)
+			if closed {
+				currentOrder = b.createSellOrder(currentOrder.Price, amount)
+			} else {
+				currentOrder, err = b.createMarketSellOrder(amount)
+				if err != nil {
+					b.logger.Println(err)
+					continue
+				}
+			}
 			b.SetState(CreateOrder)
 
 		case CreateOrder:
@@ -214,6 +225,7 @@ SM:
 				if currentOrder.Side == "BUY" {
 					b.SetState(ClosePosition)
 				} else {
+					closed = true
 					b.SetState(GetSignal)
 				}
 				b.logger.Printf("order finished %+v\n", currentOrder)
@@ -230,7 +242,7 @@ SM:
 					time.Sleep(3 * time.Second)
 				}
 			} else if currentOrder.Side == "SELL" {
-				if time.Since(currentOrder.OrderTime) > b.interval*20 {
+				if time.Since(currentOrder.OrderTime) > b.interval*10 {
 					b.logger.Println("order not completed: side=sell")
 					b.SetState(CancelOrder)
 				} else {
@@ -246,6 +258,10 @@ SM:
 			}
 			b.SetState(GetSignal)
 			b.logger.Println("order cancelled:", currentOrder.ID)
+			if currentOrder.Side == "SELL" {
+				closed = false
+				b.SetState(ClosePosition)
+			}
 		case Nothing:
 			time.Sleep(b.interval * 10)
 			b.SetState(GetSignal)
@@ -272,11 +288,45 @@ func (b *Bot) createBuyOrder() (*exchange.Order, error) {
 	return buyOrder, nil
 }
 
+func (b *Bot) createMarketSellOrder(amount float64) (*exchange.Order, error) {
+	rate1, err := b.exchange.GetRate(b.exCtx, b.pair)
+	if err != nil {
+		return nil, err
+	}
+	rate2, err := b.exchange.GetRate(b.exCtx, b.pair)
+	if err != nil {
+		return nil, err
+	}
+	// TODO
+	if math.Abs(rate2 - rate1) > rate1 * 0.05 {
+		return nil, errors.New("too expensive order when close position")
+	}
+
+	var price float64
+	if rate1 > rate2 {
+		price = rate1
+	} else {
+		price = rate2
+	}
+	//eps := price * 0.0005
+	eps := 0.0
+	sellOrder := &exchange.Order{
+		CreatedTime: time.Now(),
+		OrderTime:   time.Now().Add(30 * time.Second),
+		Pair:        b.pair,
+		Type:        "LIMIT", // todo get from exchange
+		Side:        "SELL",
+		Price:       round(price-eps, b.info.PricePrecision),
+		Amount:      amount,
+	}
+	return sellOrder, nil
+}
+
 func (b *Bot) createSellOrder(boughtRate float64, boughtAmount float64) *exchange.Order {
 	eps := boughtRate * 0.0025
 	order := &exchange.Order{
 		CreatedTime: time.Now(),
-		OrderTime:   time.Now().Add(b.interval * 60), // todo OrderTime???
+		OrderTime:   time.Now().Add(b.interval * 20), // todo OrderTime???
 		Pair:        b.pair,
 		Type:        "LIMIT", // todo get from exchange
 		Side:        "SELL",
