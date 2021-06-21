@@ -253,7 +253,7 @@ func (b *Bot) createBuyOrder() (*exchange.Order, error) {
 	if err != nil {
 		return nil, err
 	}
-	eps := 0.0
+	eps := rate * 0.0005
 	// TODO add stop loss. When SELL order not created we need close position
 	buyOrder := &exchange.Order{
 		CreatedTime: time.Now(),

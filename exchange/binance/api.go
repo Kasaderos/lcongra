@@ -175,6 +175,9 @@ func (ex *binance) CreateOrder(ctx context.Context, order *exchange.Order) (id s
 	query.Add("side", order.Side)
 	query.Add("type", order.Type)
 	query.Add("timestamp", timestamp)
+	if order.Side == "BUY" {
+		query.Add("timeInForce", "GTC")
+	}
 	query.Add("price", strconv.FormatFloat(order.Price, 'f', -1, 64))
 	if order.Side == "SELL" {
 		query.Add("stopPrice", strconv.FormatFloat(order.StopPrice, 'f', -1, 64))
