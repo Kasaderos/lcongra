@@ -235,14 +235,14 @@ SM:
 
 			// check order time
 			if currentOrder.Side == "BUY" {
-				if time.Since(currentOrder.OrderTime) > b.interval {
+				if time.Now().After(currentOrder.OrderTime){
 					b.logger.Println("order not completed: side=buy")
 					b.SetState(CancelOrder)
 				} else {
 					time.Sleep(3 * time.Second)
 				}
 			} else if currentOrder.Side == "SELL" {
-				if time.Since(currentOrder.OrderTime) > b.interval*10 {
+				if time.Now().After(currentOrder.OrderTime) {
 					b.logger.Println("order not completed: side=sell")
 					b.SetState(CancelOrder)
 				} else {
@@ -326,7 +326,7 @@ func (b *Bot) createSellOrder(boughtRate float64, boughtAmount float64) *exchang
 	eps := boughtRate * 0.0025
 	order := &exchange.Order{
 		CreatedTime: time.Now(),
-		OrderTime:   time.Now().Add(b.interval * 20), // todo OrderTime???
+		OrderTime:   time.Now().Add(b.interval * 10), // todo OrderTime???
 		Pair:        b.pair,
 		Type:        "LIMIT", // todo get from exchange
 		Side:        "SELL",
