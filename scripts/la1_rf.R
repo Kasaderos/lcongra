@@ -32,7 +32,11 @@ colnames(df) <- c('OpenTime', 'Open', 'High', 'Low', 'Close',
 data_ex <- data.frame(Time=df$CloseTime, Close=df$High)
 data_ex$Time <- as_datetime(data_ex$Time / 1000)
 
-orig <- data_ex$Close
+
+library('smooth')
+library('Mcomp')
+v <- sma(data_ex$Close, 25)
+orig <- v$fitted
 #orig <- orig[1:(dim(data_ex)[1]),2]
 N <- length(orig)
 ts <- orig
@@ -88,7 +92,7 @@ for (i in 1:p){
     N <- N+1
 }
 #png(file=paste0(symbol, ".png")
-matplot(data.frame(ts, c(data_ex[,2], rep(NA, p))), type = "l", col = c('green', 'red'),
+matplot(data.frame(ts, c(orig, rep(NA, p))), type = "l", col = c('green', 'red'),
         ylab="price", xlab="time")
 abline(v=N-p, col='red')
 #print(paste("p =",p, "success"))
