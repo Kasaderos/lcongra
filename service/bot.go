@@ -242,12 +242,13 @@ SM:
 					time.Sleep(3 * time.Second)
 				}
 			} else if currentOrder.Side == "SELL" {
-				if time.Now().After(currentOrder.OrderTime) {
-					b.logger.Println("order not completed: side=sell")
-					b.SetState(CancelOrder)
-				} else {
-					time.Sleep(b.interval / 3)
-				}
+				//if time.Now().After(currentOrder.OrderTime) {
+				//	b.logger.Println("order not completed: side=sell")
+				//	b.SetState(CancelOrder)
+				//} else {
+				//	time.Sleep(b.interval / 3)
+				//}
+				time.Sleep(b.interval / 3)
 			}
 
 		case CancelOrder:
