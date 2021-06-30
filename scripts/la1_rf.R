@@ -33,11 +33,13 @@ data_ex <- data.frame(Time=df$CloseTime, Close=df$High)
 data_ex$Time <- as_datetime(data_ex$Time / 1000)
 
 
-library('smooth')
-library('Mcomp')
-v <- sma(data_ex$Close, 25)
-orig <- v$fitted
+#library('smooth')
+#library('Mcomp')
+#v <- sma(data_ex$Close, 25)
+#orig <- v$fitted
+
 #orig <- orig[1:(dim(data_ex)[1]),2]
+orig <- data_ex$Close
 N <- length(orig)
 ts <- orig
 p <- 40
