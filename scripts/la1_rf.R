@@ -3,43 +3,89 @@ library('jsonlite')
 library('lubridate')
 
 args = commandArgs(trailingOnly=TRUE)
-#apikey <- 'PwR4lONtheOWGpQK0dBdH4yPx6AsGSl57xS8j396KeZAxcKEaaYbjaVh8s1F7B4b'
 endpoint <- "https://api.binance.com"
 url <- "/api/v3/klines"
 interval <- args[1]
-#startTime <- trunc(unclass(Sys.time() - 150 * 24 * 3600)) * 1000
-#endTime <- trunc(unclass(Sys.time())) * 1000
 symbol <- args[2]
-
-pdf(paste0(symbol, ".pdf"))
-
 limit <- 1000
-URL <- paste0(endpoint, url, 
-              '?symbol=', symbol, 
-              '&interval=', interval,
-              #'&startTime=', startTime,
-              #             '&endTime=', endTime,
-              '&limit=', limit)
-r <- GET(URL)
-body <- content(r, as="parsed", type="application/json") # decode json
-v <- unlist(body)
-df <- as.data.frame(t(matrix(as.double(v), nrow = 12)))
-colnames(df) <- c('OpenTime', 'Open', 'High', 'Low', 'Close', 
-                  'Volume', 'CloseTime', 'QuoteAssetVolume', 
-                  'NumberOfTrades', 'TakerBuyBaseAV', 'TakerBuyQuoteAV',
-                  'Ignore')
-#head(df)
-data_ex <- data.frame(Time=df$CloseTime, Close=df$High)
-data_ex$Time <- as_datetime(data_ex$Time / 1000)
 
+
+
+getHistory <- function(startTime, endTime){
+    URL <- paste0(endpoint, url, 
+                  '?symbol=', symbol, 
+                  '&interval=', interval,
+                  '&startTime=', as.character(round(startTime)),
+                  '&endTime=', as.character(round(endTime)),
+                  '&limit=', limit)
+    r <- GET(URL)
+    body <- content(r, as="parsed", type="application/json") # decode json
+    v <- unlist(body)
+    df <- as.data.frame(t(matrix(as.double(v), nrow = 12)))
+    colnames(df) <- c('OpenTime', 'Open', 'High', 'Low', 'Close', 
+                      'Volume', 'CloseTime', 'QuoteAssetVolume', 
+                      'NumberOfTrades', 'TakerBuyBaseAV', 'TakerBuyQuoteAV',
+                      'Ignore')
+    df$OpenTime <- as_datetime(df$OpenTime / 1000)
+    return(df)
+}
+
+# in ms
+getData <- function(startTime){
+    initialized <- FALSE
+    df <- NA
+    now <- as.numeric(Sys.time()) * 1000
+    while (1){
+        endTime <- startTime + limit * 60 * 1000
+        if (initialized) {
+            df <- getHistory(startTime, endTime)
+        } else {
+            df2 <- getHistory(startTime, endTime)
+            df <- rbind(df, df2)
+        }
+        if (startTime >= now) {
+            df <- df[-1,]
+            return(df)
+        }
+        startTime <- endTime
+    }
+}
+
+startTime <- as.numeric(Sys.time())
+if (interval == '1m') {
+    startTime <- as.numeric(Sys.time() - limit * 60 * 8) * 1000
+} else if (interval == '3m') {
+    startTime <- as.numeric(Sys.time() - limit * 3 * 60 * 8 ) * 1000
+}
+df <- NA
+if (file.exists(symbol, '.csv')) {
+   startTime <- as.numeric(Sys.time() - limit * 60) * 1000
+   tmpdf <- getData(startTime) 
+   df <- read.csv(paste0(symbol,'.csv'), header=T)
+   N <- dim(df)[1]
+   lastTime <- as.numeric(df[N]$OpenTime)
+   ind <- which(lastTime == as.numeric(tmpdf$OpenTime))
+   if (length(ind) > 0) {
+      df <- rbind(df, tmpdf[(ind+1):(dim(tmpdf)[1]),])[1:8000]
+   }
+} else {
+   df <- getData(startTime)
+}
+
+write.csv(df, file=paste0(symbol, '.csv'))
 
 #library('smooth')
 #library('Mcomp')
 #v <- sma(data_ex$Close, 25)
 #orig <- v$fitted
 
-#orig <- orig[1:(dim(data_ex)[1]),2]
-orig <- data_ex$Close
+# in df
+# out ans
+
+pdf(paste0(symbol, ".pdf"))
+
+f <- log(df$Close[1])
+orig <- diff( log(df$Close))
 N <- length(orig)
 ts <- orig
 p <- 40
@@ -54,32 +100,25 @@ for (i in 1:(N-p)) {
     norms <- c(norms, norm(as.matrix(X[,i]-X[,N-p+1]), "F"))
 }
 
-nearest <-min(norms) 
-eps <- 0
-step <- nearest*0.01
-num_neighbors <- 0
-while (num_neighbors < 3 * (p+1)){
-    ws <- which(norms < (nearest + eps))
-    eps <- eps + step
-    num_neighbors <- length(ws)
-}
+ws <- order(norms)[1:(3*(p+1))]
 
-if (length(norms) == 0) {
-    print("neighbors == 0")
-}
+#if (length(nearest) == 0) {
+#    print("neighbors == 0")
+#}
+
 
 Y <- X[1,(ws+1)]
 A <- t(X[,ws])
-df <- as.data.frame(A)
-df <- cbind(Y, df)
+df2 <- as.data.frame(A)
+df2 <- cbind(Y, df2)
 library(randomForest)
 set.seed(0)
-rfManyReg <- randomForest(Y ~ ., data=df)
+rfManyReg <- randomForest(Y ~ ., data=df2)
 #print(rfManyReg)
 
 x_t <- ts[(N-p+1):(N)]
 pr <- data.frame(t(rev(x_t)))
-colnames(pr) <- colnames(df)[2:dim(df)[2]]
+colnames(pr) <- colnames(df2)[2:dim(df2)[2]]
 y <- predict(rfManyReg, pr)
 
 #print(data_ex[N+1,2])
@@ -88,16 +127,23 @@ y <- predict(rfManyReg, pr)
 for (i in 1:p){
     x_t <- ts[(N-p+1):(N)]
     pr <- data.frame(t(rev(x_t)))
-    colnames(pr) <- colnames(df)[2:dim(df)[2]]
+    colnames(pr) <- colnames(df2)[2:dim(df2)[2]]
     y <- predict(rfManyReg, pr)
     ts <- c(ts, y)
     N <- N+1
 }
-#png(file=paste0(symbol, ".png")
-matplot(data.frame(ts, c(orig, rep(NA, p))), type = "l", col = c('green', 'red'),
+retback <- function(ts, f){
+   t <- c(f)
+   for (i in 1:length(ts)){
+       t <- c(t, ts[i]+t[i])
+   } 
+   t
+}
+ts <- exp(retback(ts, f))
+matplot(data.frame(ts[(length(ts)-500):length(ts)], c(df$Close[(dim(df)[1]-500+p):dim(df)[1]], rep(NA, p))), type = "l", col = c('green', 'red'),
         ylab="price", xlab="time")
-abline(v=N-p, col='red')
-#print(paste("p =",p, "success"))
+abline(v=500-p, col='red')
+
 max_price <- max(ts[(length(ts)-p):length(ts)])
 min_price <- min(ts[(length(ts)-p):length(ts)])
 
