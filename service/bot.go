@@ -226,6 +226,7 @@ SM:
 					b.SetState(ClosePosition)
 				} else {
 					closed = true
+					time.Sleep(b.interval * 20)
 					b.SetState(GetSignal)
 				}
 				b.logger.Printf("order finished %+v\n", currentOrder)
