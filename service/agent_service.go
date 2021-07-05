@@ -179,11 +179,10 @@ func (s *AgentsService) RunAgent(id string) error {
 		signalCh := make(chan Signal, 1)
 
 		go ag.bot.StartSM(tradeCtx, msgChan, signalCh)
-		go Autotrade(
+		go ag.bot.Signaller(
 			tradeCtx,
 			fmt.Sprintf("%s-%s", ag.baseCurrency, ag.quoteCurrency),
 			ag.interval,
-			ag.bot.exchange,
 			signalCh,
 		)
 

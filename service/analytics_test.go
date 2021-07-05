@@ -15,7 +15,7 @@ func Test_getDirection(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := getDirection("", "")
+			got := getDirection("", "", true)
 			fmt.Println(got)
 		})
 	}
@@ -28,7 +28,7 @@ func TestSignals_Flush(t *testing.T) {
 	}{
 		{"1", Signals{
 			Signal{
-				Stay, time.Now(),
+				Neutral, time.Now(),
 			},
 			Signal{
 				Down, time.Now(),

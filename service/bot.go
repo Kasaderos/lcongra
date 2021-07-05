@@ -2,11 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log"
+	"math"
 	"sync"
 	"time"
-	"math"
-	"errors"
 
 	"github.com/kasaderos/lcongra/exchange"
 )
@@ -18,7 +18,7 @@ const (
 	GetSignal
 	CreateOrder
 	CheckOrder
-	WaitOrder
+	Waiting
 	Nothing
 	CancelOrder
 	OpenPosition
@@ -31,7 +31,7 @@ const (
 	MinSum         = 11
 )
 
-var states = []string{"Start", "GetSignal", "CreateOrder", "CheckOrder", "WaitOrder", "Nothing", "CancelOrder", "OpenPosition", "ClosePosition", "ClosePositionNow"}
+var states = []string{"Start", "GetSignal", "CreateOrder", "CheckOrder", "Waiting", "Nothing", "CancelOrder", "OpenPosition", "ClosePosition", "ClosePositionNow"}
 
 func (s State) String() string {
 	return states[s]
@@ -40,6 +40,9 @@ func (s State) String() string {
 type Bot struct {
 	ms    sync.RWMutex // TODO
 	state State
+
+	mxcls  sync.RWMutex
+	closed bool //position
 
 	mc       sync.RWMutex // TODO
 	pair     string
@@ -69,6 +72,18 @@ func (b *Bot) GetState() State {
 	b.ms.RLock()
 	defer b.ms.RUnlock()
 	return b.state
+}
+
+func (b *Bot) isPositionClosed() bool {
+	b.mxcls.RLock()
+	defer b.mxcls.RUnlock()
+	return b.closed
+}
+
+func (b *Bot) SetClosedFlag(closed bool) {
+	b.mxcls.Lock()
+	defer b.mxcls.Unlock()
+	b.closed = closed
 }
 
 func (b *Bot) SetState(s State) {
@@ -110,7 +125,7 @@ func (b *Bot) StartSM(ctx context.Context, msgChan <-chan string, signalChannel 
 
 	var currentOrder *exchange.Order
 	var err error
-	closed := true
+	b.SetClosedFlag(true)
 	b.logger.Println("SM started")
 SM:
 	for {
@@ -130,8 +145,12 @@ SM:
 		case GetSignal:
 			select {
 			case b.lastSignal = <-signalChannel:
-				if b.lastSignal.Dir == Up && time.Since(b.lastSignal.Time) < time.Second*5 {
-					b.SetState(OpenPosition)
+				if b.isPositionClosed() {
+					if b.lastSignal.Dir == Up && time.Since(b.lastSignal.Time) < time.Second*5 {
+						b.SetState(OpenPosition)
+					}
+				} else if b.lastSignal.Dir == Neutral || b.lastSignal.Dir == Down {
+					b.SetState(ClosePosition)
 				}
 			case <-ctx.Done():
 				b.logger.Println("deleted")
@@ -164,15 +183,12 @@ SM:
 				continue
 			}
 			amount = roundDown(amount, b.info.BasePrecision)
-			if closed {
-				currentOrder = b.createSellOrder(currentOrder.Price, amount)
-			} else {
-				currentOrder, err = b.createMarketSellOrder(amount)
-				if err != nil {
-					b.logger.Println(err)
-					continue
-				}
+			currentOrder, err = b.createMarketSellOrder(amount)
+			if err != nil {
+				b.logger.Println(err)
+				continue
 			}
+
 			b.SetState(CreateOrder)
 
 		case CreateOrder:
@@ -223,12 +239,11 @@ SM:
 
 			if !exist {
 				if currentOrder.Side == "BUY" {
-					b.SetState(ClosePosition)
+					b.SetClosedFlag(false)
 				} else {
-					closed = true
-					time.Sleep(b.interval * 20)
-					b.SetState(GetSignal)
+					b.SetClosedFlag(true)
 				}
+				b.SetState(GetSignal)
 				b.logger.Printf("order finished %+v\n", currentOrder)
 				continue
 			}
@@ -236,20 +251,19 @@ SM:
 
 			// check order time
 			if currentOrder.Side == "BUY" {
-				if time.Now().After(currentOrder.OrderTime){
+				if time.Now().After(currentOrder.OrderTime) {
 					b.logger.Println("order not completed: side=buy")
 					b.SetState(CancelOrder)
 				} else {
 					time.Sleep(3 * time.Second)
 				}
 			} else if currentOrder.Side == "SELL" {
-				//if time.Now().After(currentOrder.OrderTime) {
-				//	b.logger.Println("order not completed: side=sell")
-				//	b.SetState(CancelOrder)
-				//} else {
-				//	time.Sleep(b.interval / 3)
-				//}
-				time.Sleep(b.interval / 3)
+				if time.Now().After(currentOrder.OrderTime) {
+					b.logger.Println("order not completed: side=sell")
+					b.SetState(CancelOrder)
+				} else {
+					time.Sleep(b.interval / 3)
+				}
 			}
 
 		case CancelOrder:
@@ -261,7 +275,6 @@ SM:
 			b.SetState(GetSignal)
 			b.logger.Println("order cancelled:", currentOrder.ID)
 			if currentOrder.Side == "SELL" {
-				closed = false
 				b.SetState(ClosePosition)
 			}
 		case Nothing:
@@ -300,7 +313,7 @@ func (b *Bot) createMarketSellOrder(amount float64) (*exchange.Order, error) {
 		return nil, err
 	}
 	// TODO
-	if math.Abs(rate2 - rate1) > rate1 * 0.05 {
+	if math.Abs(rate2-rate1) > rate1*0.05 {
 		return nil, errors.New("too expensive order when close position")
 	}
 
@@ -334,7 +347,7 @@ func (b *Bot) createSellOrder(boughtRate float64, boughtAmount float64) *exchang
 		Side:        "SELL",
 		Price:       round(boughtRate+eps, b.info.PricePrecision),
 		//StopPrice:   round(boughtRate-2*eps, b.info.PricePrecision),
-		Amount:      round(boughtAmount*0.999, b.info.BasePrecision),
+		Amount: round(boughtAmount*0.999, b.info.BasePrecision),
 	}
 	return order
 }

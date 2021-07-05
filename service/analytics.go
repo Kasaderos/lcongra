@@ -9,23 +9,21 @@ import (
 	"os/exec"
 	"strings"
 	"time"
-
-	"github.com/kasaderos/lcongra/exchange"
 )
 
 type Direction int
 
 const (
-	Stay Direction = 0
-	Up   Direction = 1
-	Down Direction = -1
+	Neutral Direction = 0
+	Up      Direction = 1
+	Down    Direction = -1
 )
 
 const BatchSize = 5
 
 var (
 	app    = "Rscript"
-	script = fmt.Sprintf("%s/scripts/la1_rf.R", os.Getenv("APPDIR"))
+	script = fmt.Sprintf("%s/scripts/ssa.R", os.Getenv("APPDIR"))
 )
 
 func (d Direction) String() string {
@@ -45,48 +43,52 @@ type Signal struct {
 	Time time.Time
 }
 
-func getDirection(pair string, interval string) Direction {
+func getDirection(pair string, interval string, closed bool) Direction {
 	// TODO
-	cmd := exec.Command(app, "--vanilla", script, interval, pair)
+	pos := ""
+	if closed {
+		pos = "Open"
+	} else {
+		pos = "Close"
+	}
+	cmd := exec.Command(app, "--vanilla", script, interval, pair, pos)
 
 	output, err := cmd.Output()
 	res := string(output)
 	log.Println(res)
 	if err != nil {
 		log.Println("os exec output", err)
-		return Stay
+		return Neutral
 	}
-	dir := strings.Split(res, " ")
-	if len(dir) == 0 {
-		return Stay
+	dir := strings.Split(res, "\n")
+	if len(dir) < 2 {
+		return Neutral
 	}
-	switch dir[0] {
+	switch dir[1] {
 	case "-1":
 		return Down
 	case "1":
 		return Up
 	case "0":
-		return Stay
+		return Neutral
 	}
-	return Stay
+	return Neutral
 }
 
 type Signals []Signal
 
-func Autotrade(
+func (b *Bot) Signaller(
 	ctx context.Context,
 	pair, interval string,
-	ex exchange.Exchanger,
 	signalChannel chan Signal,
 ) {
-	logger := log.New(os.Stdout, "[autotrade] ", log.Default().Flags())
+	ex := b.exchange
+	logger := log.New(os.Stdout, "[signaller] ", log.Default().Flags())
 
 	var sleepDuration time.Duration
 	switch interval {
-	case "3m":
-		sleepDuration = time.Minute * 3
-	case "1m":
-		sleepDuration = time.Minute
+	case "15m":
+		sleepDuration = time.Minute * 5
 	}
 
 	pairFormatted := ex.PairFormat(context.Background(), pair)
@@ -99,8 +101,7 @@ func Autotrade(
 			return
 		default:
 		}
-
-		dir := getDirection(pairFormatted, interval)
+		dir := getDirection(pairFormatted, interval, b.isPositionClosed())
 		signal = Signal{dir, time.Now()}
 
 		signals = append(signals, signal)
