@@ -1,0 +1,10 @@
+[Unit]
+Description=My pointless service
+After=network.target
+
+[Service]
+ExecStart=/home/lcongra/lcongra/run.sh
+WorkingDirectory=/home/lcongra
+User=lcongra
+Group=lcongra
+Environment=APPDIR=/home/lcongra/lcongra
