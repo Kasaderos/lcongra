@@ -7,7 +7,6 @@ import (
 	"math"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 )
 
@@ -23,7 +22,7 @@ const BatchSize = 5
 
 var (
 	app    = "Rscript"
-	script = fmt.Sprintf("%s/scripts/ssa.R", os.Getenv("APPDIR"))
+	script = fmt.Sprintf("%s/scripts/spd.R", os.Getenv("APPDIR"))
 )
 
 func (d Direction) String() string {
@@ -43,28 +42,18 @@ type Signal struct {
 	Time time.Time
 }
 
-func getDirection(pair string, interval string, closed bool) Direction {
+func getDirection(pair string, interval string) Direction {
 	// TODO
-	pos := ""
-	if closed {
-		pos = "Open"
-	} else {
-		pos = "Close"
-	}
-	cmd := exec.Command(app, "--vanilla", script, interval, pair, pos)
+	cmd := exec.Command(app, "--vanilla", script, interval, pair)
 
 	output, err := cmd.Output()
-	res := string(output)
-	log.Println(res)
+	dir := string(output)
+	log.Println(dir)
 	if err != nil {
 		log.Println("os exec output", err)
 		return Neutral
 	}
-	dir := strings.Split(res, "\n")
-	if len(dir) < 2 {
-		return Neutral
-	}
-	switch dir[1] {
+	switch dir {
 	case "-1":
 		return Down
 	case "1":
@@ -105,7 +94,7 @@ func (b *Bot) Signaller(
 			return
 		default:
 		}
-		dir := getDirection(pairFormatted, interval, b.isPositionClosed())
+		dir := getDirection(pairFormatted, interval)
 		signal = Signal{dir, time.Now()}
 
 		signals = append(signals, signal)
