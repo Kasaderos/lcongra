@@ -262,7 +262,7 @@ SM:
 					b.logger.Println("order not completed: side=sell")
 					b.SetState(CancelOrder)
 				} else {
-					time.Sleep(b.interval / 3)
+					time.Sleep(time.Second * 10)
 				}
 			}
 
