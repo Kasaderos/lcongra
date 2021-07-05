@@ -87,8 +87,12 @@ func (b *Bot) Signaller(
 
 	var sleepDuration time.Duration
 	switch interval {
+	case "1m":
+		sleepDuration = time.Minute
+	case "3m":
+		sleepDuration = time.Minute * 3
 	case "15m":
-		sleepDuration = time.Minute * 5
+		sleepDuration = time.Minute * 15
 	}
 
 	pairFormatted := ex.PairFormat(context.Background(), pair)

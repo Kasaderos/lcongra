@@ -63,6 +63,8 @@ func (s *AgentsService) Create(
 		dur = time.Minute
 	case "3m":
 		dur = 3 * time.Minute
+	case "15m":
+		dur = 15 * time.Minute
 	}
 	bot := NewBot(s.exchange, logger, baseCurr+"-"+quoteCurr, exCtx, dur)
 
