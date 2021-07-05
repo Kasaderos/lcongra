@@ -125,6 +125,7 @@ func (b *Bot) StartSM(ctx context.Context, msgChan <-chan string, signalChannel 
 
 	var currentOrder *exchange.Order
 	var err error
+	alpha := 0.003
 	b.SetClosedFlag(true)
 	b.logger.Println("SM started")
 SM:
@@ -151,7 +152,14 @@ SM:
 						b.SetState(OpenPosition)
 					}
 				} else if b.lastSignal.Dir == Neutral || b.lastSignal.Dir == Down {
-					b.SetState(ClosePosition)
+					rate, err := b.exchange.GetRate(b.exCtx, b.pair)
+					if err != nil {
+						b.logger.Println(err)
+						continue
+					}
+					if currentOrder.Price*alpha < rate {
+						b.SetState(ClosePosition)
+					}
 				}
 			case <-ctx.Done():
 				b.logger.Println("deleted")
