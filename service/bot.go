@@ -145,6 +145,7 @@ SM:
 		case GetSignal:
 			select {
 			case b.lastSignal = <-signalChannel:
+				b.logger.Println("dir", b.lastSignal.Dir.String())
 				if b.isPositionClosed() {
 					if b.lastSignal.Dir == Up && time.Since(b.lastSignal.Time) < time.Second*5 {
 						b.SetState(OpenPosition)
