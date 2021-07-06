@@ -7,9 +7,8 @@ endpoint <- "https://api.binance.com"
 url <- "/api/v3/klines"
 interval <- args[1]
 symbol <- args[2]
+
 limit <- 1000
-
-
 
 getHistory <- function(startTime, endTime){
     URL <- paste0(endpoint, url, 
@@ -31,12 +30,12 @@ getHistory <- function(startTime, endTime){
 }
 
 # in ms
-getData <- function(startTime){
+getData <- function(startTime, interv){
     initialized <- FALSE
     df <- NA
     now <- as.numeric(Sys.time()) * 1000
     while (1){
-        endTime <- startTime + limit * 60 * 1000
+        endTime <- startTime + limit * interv * 60 * 1000
         if (initialized) {
             df <- getHistory(startTime, endTime)
         } else {
@@ -51,15 +50,16 @@ getData <- function(startTime){
     }
 }
 
-startTime <- as.numeric(Sys.time())
-if (interval == '1m') {
-    startTime <- as.numeric(Sys.time() - limit * 60 * 8) * 1000
-} else if (interval == '3m') {
-    startTime <- as.numeric(Sys.time() - limit * 3 * 60 * 8 ) * 1000
+if (interval != "15m") {
+    quit(status = 1)
 }
+
+interv <- 15
+n <- 8
+startTime <- as.numeric(Sys.time() - limit * interv * 60 * n) * 1000
 df <- NA
-if (file.exists(symbol, '.csv')) {
-   startTime <- as.numeric(Sys.time() - limit * 60) * 1000
+if (file.exists(symbol, '.csv')[1]) {
+   startTime <- as.numeric(Sys.time() - limit * interv * 60) * 1000
    tmpdf <- getData(startTime) 
    df <- read.csv(paste0(symbol,'.csv'), header=T)
    N <- dim(df)[1]
@@ -69,18 +69,10 @@ if (file.exists(symbol, '.csv')) {
       df <- rbind(df, tmpdf[(ind+1):(dim(tmpdf)[1]),])[1:8000]
    }
 } else {
-   df <- getData(startTime)
+   df <- getData(startTime, interv)
 }
 
 write.csv(df, file=paste0(symbol, '.csv'))
-
-#library('smooth')
-#library('Mcomp')
-#v <- sma(data_ex$Close, 25)
-#orig <- v$fitted
-
-# in df
-# out ans
 
 pdf(paste0(symbol, ".pdf"))
 
@@ -148,11 +140,11 @@ max_price <- max(ts[(length(ts)-p):length(ts)])
 min_price <- min(ts[(length(ts)-p):length(ts)])
 
 price <- ts[length(ts)-p+1]
-eps <- price * 0.003
+eps <- price * 0.01
 if (price < min_price + eps && price < max_price - eps){ # && price - eps < min_price) {
-    cat(paste("1", price, min_price, max_price))
+    cat(paste(price, min_price, max_price, "\n", "1"))
 } else if (price > min_price + eps) {
-    cat(paste("-1", price, min_price, max_price))
+    cat(paste(price, min_price, max_price, "\n", "-1"))
 } else {
-    cat(paste("0", price, min_price, max_price))
+    cat(paste(price, min_price, max_price, "\n", "0"))
 }

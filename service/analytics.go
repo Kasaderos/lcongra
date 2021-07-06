@@ -56,11 +56,11 @@ func getDirection(pair string, interval string) Direction {
 		log.Println("os exec output", err)
 		return Stay
 	}
-	dir := strings.Split(res, " ")
+	dir := strings.Split(res, "\n")
 	if len(dir) == 0 {
 		return Stay
 	}
-	switch dir[0] {
+	switch dir[1] {
 	case "-1":
 		return Down
 	case "1":
@@ -87,6 +87,8 @@ func Autotrade(
 		sleepDuration = time.Minute * 3
 	case "1m":
 		sleepDuration = time.Minute
+	case "15m":
+		sleepDuration = time.Minute * 15
 	}
 
 	pairFormatted := ex.PairFormat(context.Background(), pair)

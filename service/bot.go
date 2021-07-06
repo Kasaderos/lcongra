@@ -2,11 +2,11 @@ package service
 
 import (
 	"context"
+	"errors"
 	"log"
+	"math"
 	"sync"
 	"time"
-	"math"
-	"errors"
 
 	"github.com/kasaderos/lcongra/exchange"
 )
@@ -236,7 +236,7 @@ SM:
 
 			// check order time
 			if currentOrder.Side == "BUY" {
-				if time.Now().After(currentOrder.OrderTime){
+				if time.Now().After(currentOrder.OrderTime) {
 					b.logger.Println("order not completed: side=buy")
 					b.SetState(CancelOrder)
 				} else {
@@ -249,7 +249,7 @@ SM:
 				//} else {
 				//	time.Sleep(b.interval / 3)
 				//}
-				time.Sleep(b.interval / 3)
+				time.Sleep(time.Minute)
 			}
 
 		case CancelOrder:
@@ -300,7 +300,7 @@ func (b *Bot) createMarketSellOrder(amount float64) (*exchange.Order, error) {
 		return nil, err
 	}
 	// TODO
-	if math.Abs(rate2 - rate1) > rate1 * 0.05 {
+	if math.Abs(rate2-rate1) > rate1*0.05 {
 		return nil, errors.New("too expensive order when close position")
 	}
 
@@ -325,7 +325,7 @@ func (b *Bot) createMarketSellOrder(amount float64) (*exchange.Order, error) {
 }
 
 func (b *Bot) createSellOrder(boughtRate float64, boughtAmount float64) *exchange.Order {
-	eps := boughtRate * 0.0025
+	eps := boughtRate * 0.003
 	order := &exchange.Order{
 		CreatedTime: time.Now(),
 		OrderTime:   time.Now().Add(b.interval * 10), // todo OrderTime???
@@ -334,7 +334,7 @@ func (b *Bot) createSellOrder(boughtRate float64, boughtAmount float64) *exchang
 		Side:        "SELL",
 		Price:       round(boughtRate+eps, b.info.PricePrecision),
 		//StopPrice:   round(boughtRate-2*eps, b.info.PricePrecision),
-		Amount:      round(boughtAmount*0.999, b.info.BasePrecision),
+		Amount: round(boughtAmount*0.999, b.info.BasePrecision),
 	}
 	return order
 }
