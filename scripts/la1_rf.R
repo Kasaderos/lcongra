@@ -80,7 +80,7 @@ f <- log(df$Close[1])
 orig <- diff( log(df$Close))
 N <- length(orig)
 ts <- orig
-p <- 40
+p <- 60
 X <- matrix(rev(ts[1:p]))
 for (i in 2:(N-p+1)) {
     X <- cbind(X, rev(ts[i:(i+p-1)]))
