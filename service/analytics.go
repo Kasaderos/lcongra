@@ -18,6 +18,7 @@ type Direction int
 const (
 	Stay Direction = 0
 	Up   Direction = 1
+	Up2  Direction = 2
 	Down Direction = -1
 )
 
@@ -25,7 +26,7 @@ const BatchSize = 5
 
 var (
 	app    = "Rscript"
-	script = fmt.Sprintf("%s/scripts/la1_rf.R", os.Getenv("APPDIR"))
+	script = fmt.Sprintf("%s/scripts/daily.r", os.Getenv("APPDIR"))
 )
 
 func (d Direction) String() string {
@@ -34,6 +35,8 @@ func (d Direction) String() string {
 		return "0"
 	case 1:
 		return "1"
+	case 2:
+		return "2"
 	case -1:
 		return "-1"
 	}
@@ -47,7 +50,7 @@ type Signal struct {
 
 func getDirection(pair string, interval string) Direction {
 	// TODO
-	cmd := exec.Command(app, "--vanilla", script, interval, pair)
+	cmd := exec.Command(app, "--vanilla", script, pair)
 
 	output, err := cmd.Output()
 	res := string(output)
@@ -65,6 +68,8 @@ func getDirection(pair string, interval string) Direction {
 		return Down
 	case "1":
 		return Up
+	case "2":
+		return Up2
 	case "0":
 		return Stay
 	}
@@ -81,15 +86,12 @@ func Autotrade(
 ) {
 	logger := log.New(os.Stdout, "[autotrade] ", log.Default().Flags())
 
-	var sleepDuration time.Duration
-	switch interval {
-	case "3m":
-		sleepDuration = time.Minute * 3
-	case "1m":
-		sleepDuration = time.Minute
-	case "15m":
-		sleepDuration = time.Minute * 15
+	if interval != "1d" {
+		logger.Println("invalid interval")
+		return
 	}
+
+	sleepDuration := time.Hour * 12
 
 	pairFormatted := ex.PairFormat(context.Background(), pair)
 	var signal Signal

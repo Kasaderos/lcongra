@@ -130,7 +130,7 @@ SM:
 		case GetSignal:
 			select {
 			case b.lastSignal = <-signalChannel:
-				if b.lastSignal.Dir == Up && time.Since(b.lastSignal.Time) < time.Second*5 {
+				if (b.lastSignal.Dir == Up || b.lastSignal.Dir == Up2) && time.Since(b.lastSignal.Time) < time.Second*5 {
 					b.SetState(OpenPosition)
 				}
 			case <-ctx.Done():
@@ -144,7 +144,7 @@ SM:
 				b.SetState(Nothing)
 				continue
 			}
-			currentOrder, err = b.createBuyOrder()
+			currentOrder, err = b.createBuyOrder(b.lastSignal)
 			if err != nil {
 				b.logger.Println(err)
 				continue
@@ -270,16 +270,19 @@ SM:
 	}
 }
 
-func (b *Bot) createBuyOrder() (*exchange.Order, error) {
+func (b *Bot) createBuyOrder(s Signal) (*exchange.Order, error) {
 	rate, err := b.exchange.GetRate(b.exCtx, b.pair)
 	if err != nil {
 		return nil, err
 	}
-	eps := rate * 0.0005
+	eps := 0.0
+	if s.Dir == Up {
+		eps = -rate * 0.0005
+	}
 	// TODO add stop loss. When SELL order not created we need close position
 	buyOrder := &exchange.Order{
 		CreatedTime: time.Now(),
-		OrderTime:   time.Now().Add(30 * time.Second),
+		OrderTime:   time.Now().Add(time.Hour),
 		Pair:        b.pair,
 		Type:        "LIMIT", // todo get from exchange
 		Side:        "BUY",
@@ -324,10 +327,10 @@ func (b *Bot) createMarketSellOrder(amount float64) (*exchange.Order, error) {
 }
 
 func (b *Bot) createSellOrder(boughtRate float64, boughtAmount float64) *exchange.Order {
-	eps := boughtRate * 0.003
+	eps := boughtRate * 0.006
 	order := &exchange.Order{
 		CreatedTime: time.Now(),
-		OrderTime:   time.Now().Add(b.interval * 10), // todo OrderTime???
+		OrderTime:   time.Now().Add(b.interval), // todo OrderTime???
 		Pair:        b.pair,
 		Type:        "LIMIT", // todo get from exchange
 		Side:        "SELL",

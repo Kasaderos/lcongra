@@ -145,8 +145,8 @@ func validate(id, apikey, apisecret, baseCurr, quoteCurr, interval string) error
 	if interval == "" {
 		return fmt.Errorf("interval empty")
 	}
-	if interval != "1m" && interval != "3m" && interval != "15m" {
-		return fmt.Errorf("interval not 1m, 3m, 15m")
+	if interval != "1m" && interval != "3m" && interval != "15m" && interval != "1d" {
+		return fmt.Errorf("interval not 1m, 3m, 15m, 1d")
 	}
 	return nil
 }
