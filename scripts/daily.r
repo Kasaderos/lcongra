@@ -6,8 +6,7 @@ args = commandArgs(trailingOnly=TRUE)
 endpoint <- "https://api.binance.com"
 url <- "/api/v3/klines"
 interval <- '1d' 
-#symbol <- args[2]
-symbol <- 'ETHUSDT'
+symbol <- args[1]
 limit <- 1000
 
 URL <- paste0(endpoint, url, 
