@@ -31,8 +31,7 @@ const (
 	MinSum         = 11
 	hallMax        = 0.05
 	hallMiddle     = 0.03
-	hallMin        = 0.006
-	bottom         = 0.003
+	hallMin        = 0.003
 )
 
 type Level int
