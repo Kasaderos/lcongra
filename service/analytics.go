@@ -7,7 +7,6 @@ import (
 	"math"
 	"os"
 	"os/exec"
-	"strings"
 	"time"
 
 	"github.com/kasaderos/lcongra/exchange"
@@ -53,17 +52,14 @@ func getDirection(pair string, interval string) Direction {
 	cmd := exec.Command(app, "--vanilla", script, pair)
 
 	output, err := cmd.Output()
-	res := string(output)
-	log.Println(res)
+	dir := string(output)
+	log.Println(dir)
 	if err != nil {
 		log.Println("os exec output", err)
 		return Stay
 	}
-	dir := strings.Split(res, "\n")
-	if len(dir) == 0 {
-		return Stay
-	}
-	switch dir[1] {
+
+	switch dir {
 	case "-1":
 		return Down
 	case "1":
@@ -91,7 +87,7 @@ func Autotrade(
 		return
 	}
 
-	sleepDuration := time.Hour * 12
+	sleepDuration := time.Hour * 1
 
 	pairFormatted := ex.PairFormat(context.Background(), pair)
 	var signal Signal

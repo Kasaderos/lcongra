@@ -130,7 +130,8 @@ SM:
 		case GetSignal:
 			select {
 			case b.lastSignal = <-signalChannel:
-				if (b.lastSignal.Dir == Up || b.lastSignal.Dir == Up2) && time.Since(b.lastSignal.Time) < time.Second*5 {
+				b.logger.Println("signal", b.lastSignal)
+				if (b.lastSignal.Dir == Up || b.lastSignal.Dir == Up2) && time.Since(b.lastSignal.Time) < time.Minute*30 {
 					b.SetState(OpenPosition)
 				}
 			case <-ctx.Done():

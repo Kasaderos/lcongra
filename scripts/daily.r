@@ -39,10 +39,11 @@ if (kandle1$Open > kandle1$Close && kandle2$Open < kandle2$Close && kandle3$Open
 
 # case 1: red green green 
 if (case == 1) {
-	if (abs(kandle2$Open - kandle2$Close) / kandle2$Close > 0.02) {
-		cat("2\n")
+	locMin <- min(df$Open[(N-90):N])
+	if (abs(kandle2$Open - kandle2$Close) / kandle2$Close > 0.02 && (abs(locMin - kandle3$Close) / kandle3$Close < 0.03)) {
+		cat("2")
 	} else {
-	    cat("0\n")
+	    cat("0")
 	}
 }
 
@@ -51,14 +52,14 @@ if (case == 2) {
     delta <- 7
 	locMin <- min(df$Close[(N-90):(N-delta)])
 	if (abs(locMin - kandle3$Close) / kandle3$Close < 0.03) {
-		cat("1\n")
+		cat("1")
 	} else {
-	    cat("-1\n")
+	    cat("-1")
 	}
 }
 
 # empty case
 if (case == 0) {
-	cat("0\n")
+	cat("0")
 }
 
