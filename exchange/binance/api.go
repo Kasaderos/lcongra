@@ -246,9 +246,9 @@ func (ex *binance) GetBalance(ctx context.Context, currency string) (amount floa
 		return -1, json.ErrJSONUnmarshal
 	}
 	for _, b := range balance.Balances {
-		if b.Locked >= 1e-8 {
-			return -1, exchange.ErrBalanceLocked
-		}
+		//if b.Locked >= 1e-8 {
+		//	return -1, exchange.ErrBalanceLocked
+		//}
 		if b.Asset == currency {
 			ex.logger.Println(b.Asset, b.Free)
 			return b.Free, nil
@@ -395,12 +395,12 @@ func (ex *binance) GetInformation(ctx context.Context, pair string) (info *excha
 	_, quoated := exchange.Currencies(pair)
 	amount, err := ex.GetBalance(ctx, quoated)
 	if err != nil {
-		return nil, err
+		ex.logger.Println("info: get balance:", err)
 	}
 	info.FreeQuotedCurrency = amount
 	info.CanTrade = true
 	info.MinSum = 11
-	ex.logger.Println("currency", quoated, "free", amount)
+	//ex.logger.Println("currency", quoated, "free", amount)
 	return info, nil
 }
 

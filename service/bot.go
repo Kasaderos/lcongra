@@ -29,6 +29,20 @@ const (
 const (
 	AttemptsNumber = 3
 	MinSum         = 11
+	hallMax        = 0.05
+	hallMiddle     = 0.03
+	hallMin        = 0.006
+	bottom         = 0.003
+)
+
+type Level int
+
+const (
+	LevelB Level = iota
+	Level0
+	Level1
+	Level2
+	Level3
 )
 
 var states = []string{"Start", "GetSignal", "CreateOrder", "CheckOrder", "WaitOrder", "Nothing", "CancelOrder", "OpenPosition", "ClosePosition", "ClosePositionNow"}
@@ -110,7 +124,7 @@ func (b *Bot) StartSM(ctx context.Context, msgChan <-chan string, signalChannel 
 
 	var currentOrder *exchange.Order
 	var err error
-	closed := true
+	var maxLevel Level
 	b.logger.Println("SM started")
 SM:
 	for {
@@ -152,6 +166,19 @@ SM:
 			}
 			b.SetState(CreateOrder)
 		case ClosePosition:
+			rate, err := b.exchange.GetRate(b.exCtx, b.pair)
+			if err != nil {
+				b.logger.Println(err)
+				continue
+			}
+			level := getLevel(rate, currentOrder.Price)
+			if level > maxLevel {
+				maxLevel = level
+			}
+			if !closePosition(level, maxLevel, currentOrder.CreatedTime) {
+				time.Sleep(time.Minute * 5)
+				continue
+			}
 			// bought currency let's sell
 			base, _ := exchange.Currencies(b.pair)
 			amount, err := b.exchange.GetBalance(b.exCtx, base)
@@ -165,14 +192,11 @@ SM:
 				continue
 			}
 			amount = roundDown(amount, b.info.BasePrecision)
-			if closed {
-				currentOrder = b.createSellOrder(currentOrder.Price, amount)
-			} else {
-				currentOrder, err = b.createMarketSellOrder(amount)
-				if err != nil {
-					b.logger.Println(err)
-					continue
-				}
+
+			currentOrder, err = b.createMarketSellOrder(amount)
+			if err != nil {
+				b.logger.Println(err)
+				continue
 			}
 			b.SetState(CreateOrder)
 
@@ -226,7 +250,7 @@ SM:
 				if currentOrder.Side == "BUY" {
 					b.SetState(ClosePosition)
 				} else {
-					closed = true
+					maxLevel = LevelB
 					b.SetState(GetSignal)
 				}
 				b.logger.Printf("order finished %+v\n", currentOrder)
@@ -261,7 +285,6 @@ SM:
 			b.SetState(GetSignal)
 			b.logger.Println("order cancelled:", currentOrder.ID)
 			if currentOrder.Side == "SELL" {
-				closed = false
 				b.SetState(ClosePosition)
 			}
 		case Nothing:
@@ -340,4 +363,33 @@ func (b *Bot) createSellOrder(boughtRate float64, boughtAmount float64) *exchang
 		Amount: round(boughtAmount*0.999, b.info.BasePrecision),
 	}
 	return order
+}
+
+//  3 - big profit    > hallMax
+//  2 - medium profit > hallMedium
+//  1 - small profit  > hallMin
+//  0 - loss
+// -1 - loss
+func getLevel(rate float64, price float64) Level {
+	if rate > price {
+		if (1 - price/rate) > hallMax {
+			return Level3
+		} else if (1 - price/rate) > hallMiddle {
+			return Level2
+		} else if (1 - price/rate) > hallMin {
+			return Level1
+		} else {
+			return Level0
+		}
+	}
+	return LevelB
+}
+
+func closePosition(level Level, maxLevel Level, boughtTime time.Time) bool {
+	if level == Level3 ||
+		(maxLevel == Level3 && level >= Level1) ||
+		(time.Since(boughtTime) > time.Hour*18 && level >= Level1) {
+		return true
+	}
+	return false
 }
