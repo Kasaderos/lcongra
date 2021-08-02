@@ -130,6 +130,7 @@ func (b *Bot) StartSM(ctx context.Context, msgChan <-chan string, signalChannel 
 	var currentOrder *exchange.Order
 	var err error
 	var maxLevel Level
+	cache := float64(MinSum)
 	b.logger.Println("SM started")
 SM:
 	for {
@@ -164,7 +165,7 @@ SM:
 				b.SetState(Nothing)
 				continue
 			}
-			currentOrder, err = b.createBuyOrder(b.lastSignal)
+			currentOrder, err = b.createBuyOrder(b.lastSignal, cache)
 			if err != nil {
 				b.logger.Println(err)
 				continue
@@ -256,6 +257,7 @@ SM:
 					b.SetState(ClosePosition)
 				} else {
 					maxLevel = LevelB
+					cache = currentOrder.Amount * currentOrder.Price
 					b.SetState(GetSignal)
 				}
 				b.logger.Printf("order finished %+v\n", currentOrder)
@@ -299,7 +301,7 @@ SM:
 	}
 }
 
-func (b *Bot) createBuyOrder(s Signal) (*exchange.Order, error) {
+func (b *Bot) createBuyOrder(s Signal, cache float64) (*exchange.Order, error) {
 	rate, err := b.exchange.GetRate(b.exCtx, b.pair)
 	if err != nil {
 		return nil, err
@@ -316,7 +318,7 @@ func (b *Bot) createBuyOrder(s Signal) (*exchange.Order, error) {
 		Type:        "LIMIT", // todo get from exchange
 		Side:        "BUY",
 		Price:       round(rate+eps, b.info.PricePrecision),
-		Amount:      round(MinSum/(rate+eps), b.info.BasePrecision),
+		Amount:      round(cache/(rate+eps), b.info.BasePrecision),
 	}
 	return buyOrder, nil
 }
