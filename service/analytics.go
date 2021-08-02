@@ -25,7 +25,7 @@ const BatchSize = 5
 
 var (
 	app    = "Rscript"
-	script = fmt.Sprintf("%s/scripts/daily.r", os.Getenv("APPDIR"))
+	script = fmt.Sprintf("%s/scripts/la1.R", os.Getenv("APPDIR"))
 )
 
 func (d Direction) String() string {
@@ -47,18 +47,29 @@ type Signal struct {
 	Time time.Time
 }
 
+// ...  \n <- index
+// <dir>\n     => <dir>
+func getResult(out []byte) string {
+	p := 0
+	for i := len(out) - 2; i >= 0; i-- {
+		if out[i] == '\n' {
+			p = i
+		}
+	}
+	return string(out[p+1 : len(out)-1])
+}
+
 func getDirection(pair string, interval string) Direction {
 	// TODO
 	cmd := exec.Command(app, "--vanilla", script, pair)
 
 	output, err := cmd.Output()
-	dir := string(output)
-	log.Println(dir)
+	dir := getResult(output)
 	if err != nil {
 		log.Println("os exec output", err)
 		return Stay
 	}
-
+	log.Printf("[%s] %s\n", pair, output)
 	switch dir {
 	case "-1":
 		return Down
@@ -82,12 +93,12 @@ func Autotrade(
 ) {
 	logger := log.New(os.Stdout, "[autotrade] ", log.Default().Flags())
 
-	if interval != "1d" {
+	if interval != "15m" {
 		logger.Println("invalid interval")
 		return
 	}
 
-	sleepDuration := time.Hour * 1
+	sleepDuration := time.Minute * 5
 
 	pairFormatted := ex.PairFormat(context.Background(), pair)
 	var signal Signal

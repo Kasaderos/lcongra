@@ -29,9 +29,15 @@ const (
 const (
 	AttemptsNumber = 3
 	MinSum         = 11
-	hallMax        = 0.05
-	hallMiddle     = 0.03
+	hallMax        = 0.003
+	hallMiddle     = 0.003
 	hallMin        = 0.003
+	// market: after what time do we check the conditions for closing an order
+	CheckCloseInterval = time.Second * 5
+	// check placed order interval
+	CheckOrderInterval = time.Second * 5
+	// signal TTL
+	SignalTimeToLive = time.Second * 5
 )
 
 type Level int
@@ -144,7 +150,7 @@ SM:
 			select {
 			case b.lastSignal = <-signalChannel:
 				b.logger.Println("signal", b.lastSignal)
-				if (b.lastSignal.Dir == Up || b.lastSignal.Dir == Up2) && time.Since(b.lastSignal.Time) < time.Minute*30 {
+				if (b.lastSignal.Dir == Up || b.lastSignal.Dir == Up2) && time.Since(b.lastSignal.Time) < SignalTimeToLive {
 					b.SetState(OpenPosition)
 				}
 			case <-ctx.Done():
@@ -175,7 +181,7 @@ SM:
 				maxLevel = level
 			}
 			if !closePosition(level, maxLevel, currentOrder.CreatedTime) {
-				time.Sleep(time.Minute * 5)
+				time.Sleep(CheckCloseInterval)
 				continue
 			}
 			// bought currency let's sell
@@ -234,7 +240,7 @@ SM:
 			}
 			if err != nil {
 				b.logger.Println("can't check order")
-				time.Sleep(5 * time.Second)
+				time.Sleep(CheckOrderInterval)
 				continue
 			}
 
@@ -263,7 +269,7 @@ SM:
 					b.logger.Println("order not completed: side=buy")
 					b.SetState(CancelOrder)
 				} else {
-					time.Sleep(3 * time.Second)
+					time.Sleep(CheckOrderInterval)
 				}
 			} else if currentOrder.Side == "SELL" {
 				//if time.Now().After(currentOrder.OrderTime) {
@@ -272,7 +278,7 @@ SM:
 				//} else {
 				//	time.Sleep(b.interval / 3)
 				//}
-				time.Sleep(time.Minute)
+				time.Sleep(CheckOrderInterval)
 			}
 
 		case CancelOrder:
@@ -287,7 +293,7 @@ SM:
 				b.SetState(ClosePosition)
 			}
 		case Nothing:
-			time.Sleep(b.interval * 10)
+			time.Sleep(b.interval * 1)
 			b.SetState(GetSignal)
 		}
 	}
@@ -305,7 +311,7 @@ func (b *Bot) createBuyOrder(s Signal) (*exchange.Order, error) {
 	// TODO add stop loss. When SELL order not created we need close position
 	buyOrder := &exchange.Order{
 		CreatedTime: time.Now(),
-		OrderTime:   time.Now().Add(time.Hour),
+		OrderTime:   time.Now().Add(time.Second * 5),
 		Pair:        b.pair,
 		Type:        "LIMIT", // todo get from exchange
 		Side:        "BUY",
@@ -385,10 +391,5 @@ func getLevel(rate float64, price float64) Level {
 }
 
 func closePosition(level Level, maxLevel Level, boughtTime time.Time) bool {
-	if level == Level3 ||
-		(maxLevel == Level3 && level >= Level1) ||
-		(time.Since(boughtTime) > time.Hour*18 && level >= Level1) {
-		return true
-	}
-	return false
+	return level >= Level1
 }

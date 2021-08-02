@@ -3,34 +3,117 @@ library('jsonlite')
 library('lubridate')
 
 args = commandArgs(trailingOnly=TRUE)
-#apikey <- 'PwR4lONtheOWGpQK0dBdH4yPx6AsGSl57xS8j396KeZAxcKEaaYbjaVh8s1F7B4b'
 endpoint <- "https://api.binance.com"
 url <- "/api/v3/klines"
 interval <- args[1]
-#startTime <- trunc(unclass(Sys.time() - 150 * 24 * 3600)) * 1000
-#endTime <- trunc(unclass(Sys.time())) * 1000
 symbol <- args[2]
+#interval <- "15m"
+#symbol <- "BTCUSDT"
 limit <- 1000
-URL <- paste0(endpoint, url, 
-              '?symbol=', symbol, 
-              '&interval=', interval,
-              #'&startTime=', startTime,
-              #             '&endTime=', endTime,
-              '&limit=', limit)
-r <- GET(URL)
-body <- content(r, as="parsed", type="application/json") # decode json
-v <- unlist(body)
-df <- as.data.frame(t(matrix(as.double(v), nrow = 12)))
-colnames(df) <- c('OpenTime', 'Open', 'High', 'Low', 'Close', 
-                  'Volume', 'CloseTime', 'QuoteAssetVolume', 
-                  'NumberOfTrades', 'TakerBuyBaseAV', 'TakerBuyQuoteAV',
-                  'Ignore')
-#head(df)
-data_ex <- data.frame(Time=df$CloseTime, Close=df$High)
-data_ex$Time <- as_datetime(data_ex$Time / 1000)
 
-orig <- data_ex
-orig <- orig[1:(dim(data_ex)[1]),2]
+getHistory <- function(startTime, endTime){
+    URL <- ''
+    if (is.na(startTime) || is.na(endTime)) {
+        URL <- paste0(endpoint, url, 
+                      '?symbol=', symbol, 
+                      '&interval=', interval,
+                      '&limit=', limit)
+    } else {
+        URL <- paste0(endpoint, url, 
+                  '?symbol=', symbol, 
+                  '&interval=', interval,
+                  '&startTime=', as.character(round(startTime)),
+                  '&endTime=', as.character(round(endTime)),
+                  '&limit=', limit)
+    }
+    r <- GET(URL)
+    body <- content(r, as="parsed", type="application/json") # decode json
+    v <- unlist(body)
+    df <- as.data.frame(t(matrix(as.double(v), nrow = 12)))
+    colnames(df) <- c('OpenTime', 'Open', 'High', 'Low', 'Close', 
+                      'Volume', 'CloseTime', 'QuoteAssetVolume', 
+                      'NumberOfTrades', 'TakerBuyBaseAV', 'TakerBuyQuoteAV',
+                      'Ignore')
+    df$OpenTime <- as_datetime(df$OpenTime / 1000)
+    return(df)
+}
+
+# in ms
+getData <- function(startTime, interv){
+    initialized <- FALSE
+    df <- NA
+    now <- as.numeric(Sys.time()) * 1000
+    while (1){
+        endTime <- startTime + limit * interv * 60 * 1000
+        if (initialized) {
+            df <- getHistory(startTime, endTime)
+        } else {
+            df2 <- getHistory(startTime, endTime)
+            df <- rbind(df, df2)
+        }
+        if (startTime >= now) {
+            df <- df[-1,]
+            return(df)
+        }
+        startTime <- endTime
+    }
+}
+
+if (interval != "15m") {
+    quit(status = 1)
+}
+
+interv <- 15
+n <- 8
+startTime <- as.numeric(Sys.time() - limit * interv * 60 * n) * 1000
+df <- NA
+if (file.exists(symbol, '.csv')[1]) {
+    startTime <- as.numeric(Sys.time() - limit * interv * 60) * 1000
+    tmpdf <- getData(startTime) 
+    df <- read.csv(paste0(symbol,'.csv'), header=T)
+    N <- dim(df)[1]
+    lastTime <- as.numeric(df[N]$OpenTime)
+    ind <- which(lastTime == as.numeric(tmpdf$OpenTime))
+    if (length(ind) > 0) {
+        df <- rbind(df, tmpdf[(ind+1):(dim(tmpdf)[1]),])[1:8000]
+    }
+} else {
+    df <- getData(startTime, interv)
+}
+
+write.csv(df, file=paste0(symbol, '.csv'))
+
+###########################################################
+# check ma25
+###########################################################
+
+interval <- '1d'
+daily <- getHistory(NA, NA)
+
+
+library("Mcomp")
+library("smooth")
+ma25 <- sma(daily$Close, h = 25)
+dir <- 0
+lastMonth <-
+    diff(ma25$fitted[(length(ma25$fitted) - 30):length(ma25$fitted)])
+s <- sum(lastMonth)
+
+if (s > 0 && s < 100) {
+    dir <- 0
+} else if (s < 0) {
+    dir <- -1
+} else {
+    dir <- 1
+}
+
+if (dir < 0) {
+    cat("-1")
+    quit(status=0)
+} 
+
+orig <- df
+orig <- orig[1:(dim(df)[1]),2]
 N <- length(orig)
 ts <- orig
 p <- 60
@@ -78,20 +161,23 @@ for (i in 1:p){
     ts <- c(ts, y)
     N <- N+1
 }
-matplot(data.frame(ts, c(data_ex[,2], rep(NA, p))), type = "l", col = c('green', 'red'),
+matplot(data.frame(ts[(length(ts)-500):length(ts)], c(df$Close[(dim(df)[1]-500+p):dim(df)[1]], rep(NA, p))), type = "l", col = c('green', 'red'),
         ylab="price", xlab="time")
-abline(v=N-p, col='red')
-#print(paste("p =",p, "success"))
+abline(v=500-p, col='red')
+
 max_price <- max(ts[(length(ts)-p):length(ts)])
 min_price <- min(ts[(length(ts)-p):length(ts)])
 
 price <- ts[length(ts)-p]
-eps <- price * 0.0027
-
-if (price < min_price + eps && price < max_price - eps){ # && price - eps < min_price) {
-    cat(paste("1", min_price, max_price))
-} else if (price > min_price + eps) {
-    cat(paste("-1", min_price, max_price))
+cat(paste("current", price, "max", max_price, "min", min_price, "\n"))
+s <- sum(diff(ts[(length(ts)-p):length(ts)]))
+cat(paste("estimate", s, "\n"))
+eps <- price * 0.003
+if (price + eps < max_price) { # && price - eps < min_price) {
+    cat("1\n")
+} else if (s < 0) {
+    cat("-1\n")
 } else {
-    cat(paste("0", min_price, max_price))
+    cat("0\n")
 }
+
