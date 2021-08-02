@@ -51,9 +51,13 @@ type Signal struct {
 // <dir>\n     => <dir>
 func getResult(out []byte) string {
 	p := 0
+	if (len(out) < 2) {
+		return "0"
+	}
 	for i := len(out) - 2; i >= 0; i-- {
 		if out[i] == '\n' {
 			p = i
+			break
 		}
 	}
 	return string(out[p+1 : len(out)-1])
@@ -61,15 +65,15 @@ func getResult(out []byte) string {
 
 func getDirection(pair string, interval string) Direction {
 	// TODO
-	cmd := exec.Command(app, "--vanilla", script, pair)
+	cmd := exec.Command(app, "--vanilla", script, interval, pair)
 
 	output, err := cmd.Output()
-	dir := getResult(output)
 	if err != nil {
 		log.Println("os exec output", err)
 		return Stay
 	}
-	log.Printf("[%s] %s\n", pair, output)
+	dir := getResult(output)
+	log.Printf("[%s] %s %s\n", pair, output, dir)
 	switch dir {
 	case "-1":
 		return Down
@@ -112,6 +116,10 @@ func Autotrade(
 		}
 
 		dir := getDirection(pairFormatted, interval)
+		if dir == Stay {
+			time.Sleep(time.Second * 5)
+			continue
+		}
 		signal = Signal{dir, time.Now()}
 
 		signals = append(signals, signal)

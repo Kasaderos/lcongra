@@ -311,7 +311,7 @@ func (b *Bot) createBuyOrder(s Signal) (*exchange.Order, error) {
 	// TODO add stop loss. When SELL order not created we need close position
 	buyOrder := &exchange.Order{
 		CreatedTime: time.Now(),
-		OrderTime:   time.Now().Add(time.Second * 5),
+		OrderTime:   time.Now().Add(time.Second * 30),
 		Pair:        b.pair,
 		Type:        "LIMIT", // todo get from exchange
 		Side:        "BUY",
